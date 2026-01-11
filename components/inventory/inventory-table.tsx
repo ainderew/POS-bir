@@ -94,12 +94,12 @@ export function InventoryTable({ products, onEdit, onDelete }: InventoryTablePro
                   <TableCell className="text-right font-mono">₱{Number(product.selling_price).toFixed(2)}</TableCell>
                   <TableCell className="text-center">
                     {product.is_low_stock ? (
-                      <Badge variant="destructive" className="gap-1">
+                      <Badge className="gap-1 bg-warning text-warning-foreground">
                         <AlertTriangle className="h-3 w-3" />
                         Low Stock
                       </Badge>
                     ) : (
-                      <Badge variant="secondary">In Stock</Badge>
+                      <Badge variant="secondary" className="bg-success/10 text-success border-success/20">In Stock</Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-right">

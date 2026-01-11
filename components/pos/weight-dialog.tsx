@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -30,9 +30,18 @@ export function WeightDialog({
 }: WeightDialogProps) {
   const [weight, setWeight] = useState("");
 
+  useEffect(() => {
+    if (isOpen) {
+      setWeight("");
+    }
+  }, [isOpen]);
+
   const handleConfirm = () => {
     const parsedWeight = Number.parseFloat(weight);
     if (parsedWeight > 0) {
+      if (product && parsedWeight > product.stock_level) {
+        return; // Guard against confirming invalid weight
+      }
       onConfirm(parsedWeight);
       setWeight("");
     }
@@ -45,6 +54,8 @@ export function WeightDialog({
     }
   };
 
+  const isInvalid = weight !== "" && product !== null && Number.parseFloat(weight) > product.stock_level;
+
   return (
     <Dialog open={isOpen} onOpenChange={onCancel}>
       <DialogContent>
@@ -56,20 +67,41 @@ export function WeightDialog({
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="weight">Weight (kg)</Label>
+            <div className="flex justify-between items-center">
+              <Label htmlFor="weight">Weight (kg)</Label>
+              {product && (
+                <span className="text-xs font-medium text-muted-foreground">
+                  Available: {Number(product.stock_level).toFixed(3)} kg
+                </span>
+              )}
+            </div>
             <Input
               id="weight"
               type="number"
               step="0.001"
+              min="0.001"
+              max={product?.stock_level}
               placeholder="0.000"
               value={weight}
-              onChange={(e) => setWeight(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "" || Number.parseFloat(val) >= 0) {
+                  setWeight(val);
+                }
+              }}
               onKeyDown={handleKeyDown}
+              className={isInvalid ? "border-destructive focus-visible:ring-destructive" : ""}
               autoFocus
             />
+            {isInvalid && (
+              <p className="text-xs font-medium text-destructive">
+                Input weight exceeds available stock ({Number(product?.stock_level).toFixed(3)} kg)
+              </p>
+            )}
           </div>
 
-          {weight && product && (
+          {weight && product && !isInvalid && (
+
             <div className="bg-muted p-4 rounded-lg">
               <div className="text-sm text-muted-foreground">Total Price</div>
               <div className="text-2xl font-bold">
@@ -85,7 +117,7 @@ export function WeightDialog({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={!weight || Number.parseFloat(weight) <= 0}
+            disabled={!weight || Number.parseFloat(weight) <= 0 || isInvalid}
           >
             Add to Cart
           </Button>

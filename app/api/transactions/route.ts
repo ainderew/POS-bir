@@ -58,7 +58,9 @@ export async function POST(request: Request) {
       payment_method, 
       scPwdData,
       paxCount,
-      seniorCount
+      seniorCount,
+      amount_tendered,
+      reference_number
     } = await request.json()
     
     const posId = getPosId()
@@ -69,6 +71,7 @@ export async function POST(request: Request) {
 
     // 1. Calculate PH-Compliant Totals
     const totals = calculateTransactionTotals(cart, paxCount || 1, seniorCount || 0)
+    const changeAmount = amount_tendered ? parseFloat(amount_tendered) - totals.netSales : 0
 
     const result = await transaction(async (client) => {
       // 2. Get and Increment Invoice Number
@@ -84,15 +87,18 @@ export async function POST(request: Request) {
           invoice_number, pos_id, 
           gross_sales, vatable_sales, vat_amount, vat_exempt_sales, zero_rated_sales, total_discount, net_sales,
           pax_count, senior_count, sc_pwd_id, sc_pwd_name,
-          payment_method
+          payment_method, amount_tendered, change_amount, reference_number
         ) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
          RETURNING *`,
         [
           invoiceNumber, posId,
           totals.grossSales, totals.vatableSales, totals.vatAmount, totals.vatExemptSales, totals.zeroRatedSales, totals.totalDiscount, totals.netSales,
           paxCount || 1, seniorCount || 0, scPwdData?.idNumber || null, scPwdData?.name || null,
-          payment_method || "CASH"
+          payment_method || "CASH",
+          amount_tendered || null,
+          changeAmount >= 0 ? changeAmount : 0,
+          reference_number || null
         ],
       )
 

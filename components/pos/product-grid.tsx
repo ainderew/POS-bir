@@ -70,24 +70,24 @@ export function ProductGrid({ categoryId, searchTerm, onProductSelect }: Product
       {products.map((product) => (
         <Card
           key={product.id}
-          className="p-4 cursor-pointer hover:bg-accent transition-colors"
+          className="p-4 cursor-pointer border-2 hover:border-primary bg-workspace/50 hover:bg-workspace transition-all"
           onClick={() => onProductSelect(product)}
         >
-          <div className="space-y-2">
-            <div className="flex items-start justify-between gap-2">
-              <h4 className="font-medium text-sm leading-tight line-clamp-2">{product.name}</h4>
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-2 min-h-[40px]">
+              <h4 className="font-bold text-sm leading-tight line-clamp-2 uppercase">{product.name}</h4>
               {Number(product.stock_level) <= Number(product.low_stock_threshold) && (
-                <Badge variant="destructive" className="shrink-0 text-xs">
-                  Low
+                <Badge className="shrink-0 text-[9px] bg-warning text-warning-foreground animate-pulse">
+                  LOW
                 </Badge>
               )}
             </div>
-            <div className="space-y-1">
-              <p className="text-lg font-bold">₱{Number(product.selling_price).toFixed(2)}</p>
-              <p className="text-xs text-muted-foreground">
+            <div className="pt-2 border-t border-border/50">
+              <p className="text-xl font-black text-primary">₱{Number(product.selling_price).toFixed(2)}</p>
+              <p className="text-[10px] font-medium text-muted-foreground mt-1">
                 {product.unit_type === "QUANTITY"
-                  ? `${Number(product.stock_level)} in stock`
-                  : `${Number(product.stock_level).toFixed(3)} kg`}
+                  ? `${Number(product.stock_level)} PCS AVAILABLE`
+                  : `${Number(product.stock_level).toFixed(3)} KG AVAILABLE`}
               </p>
             </div>
           </div>

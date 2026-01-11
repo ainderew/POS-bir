@@ -26,6 +26,7 @@ export default function POSPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
+  const [refreshKey, setRefreshKey] = useState(0)
   
   // Shift State
   const [activeShift, setActiveShift] = useState<Shift | null>(null)
@@ -115,12 +116,12 @@ export default function POSPage() {
     }
   }
 
-  const handleCloseShift = async (actualCash: number) => {
+  const handleCloseShift = async (details: { actualCash: number, actualGcash: number, actualMaya: number, actualCard: number }) => {
     try {
       const res = await fetch("/api/shifts/close", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shiftId: activeShift?.id, actualCash })
+        body: JSON.stringify({ shiftId: activeShift?.id, ...details })
       })
       const data = await res.json()
       if (res.ok) {
@@ -204,7 +205,25 @@ export default function POSPage() {
     toast.info("Item removed from cart")
   }
 
-  const handleCheckout = async (paymentMethod: string = "CASH") => {
+  const handleUpdateQuantity = (productId: string, newQuantity: number) => {
+    const item = cart.find((i) => i.product.id === productId)
+    if (!item) return
+
+    if (newQuantity <= 0) {
+      handleRemoveItem(productId)
+      return
+    }
+
+    const stockLevel = Number(item.product.stock_level)
+    if (newQuantity > stockLevel) {
+      toast.error(`Only ${item.product.unit_type === "WEIGHT" ? stockLevel.toFixed(3) + " kg" : stockLevel + " pcs"} available`)
+      return
+    }
+
+    setCart(cart.map((i) => (i.product.id === productId ? { ...i, quantity: newQuantity } : i)))
+  }
+
+  const handleCheckout = async (paymentMethod: string = "CASH", details?: { amountTendered?: number, referenceNumber?: string }) => {
     if (!activeShift) {
       toast.error("No active shift. Please open a shift first.")
       return
@@ -220,7 +239,9 @@ export default function POSPage() {
           payment_method: paymentMethod,
           scPwdData,
           paxCount: scPwdData?.paxCount || 1,
-          seniorCount: scPwdData?.seniorCount || 0
+          seniorCount: scPwdData?.seniorCount || 0,
+          amount_tendered: details?.amountTendered,
+          reference_number: details?.referenceNumber
         }),
       })
 
@@ -255,6 +276,7 @@ export default function POSPage() {
 
         setCart([])
         setScPwdData(null)
+        setRefreshKey(prev => prev + 1)
       } else {
         toast.error(data.error || "Transaction failed")
       }
@@ -266,12 +288,12 @@ export default function POSPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto py-8 px-4">
-        <div className="mb-8 flex justify-between items-start">
+    <div className="h-screen bg-background overflow-hidden flex flex-col">
+      <div className="container mx-auto py-4 px-4 flex-none">
+        <div className="mb-4 flex justify-between items-start">
           <div>
-            <h1 className="text-4xl font-bold text-balance">Point of Sale</h1>
-            <p className="text-muted-foreground mt-2">BIR Compliant Philippine POS System</p>
+            <h1 className="text-3xl font-bold tracking-tight">Point of Sale</h1>
+            <p className="text-xs text-muted-foreground">BIR Compliant Philippine POS System</p>
           </div>
           <div className="flex items-center gap-3">
             {activeShift && (
@@ -289,18 +311,13 @@ export default function POSPage() {
             <SyncStatus />
           </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+      <div className="container mx-auto px-4 pb-4 flex-1 min-h-0">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+          <div className="lg:col-span-2 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5" />
-                  Product Search
-                </CardTitle>
-                <CardDescription>Scan barcode or type product name</CardDescription>
-              </CardHeader>
-              <CardContent>
+              <CardContent className="p-4">
                 <ProductSearch
                   onProductSelect={handleProductSelect}
                   searchTerm={searchTerm}
@@ -310,19 +327,13 @@ export default function POSPage() {
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Grid3x3 className="h-5 w-5" />
-                  Browse Products
-                </CardTitle>
-                <CardDescription>Filter by category and select products</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 p-4">
                 <CategoryFilter 
                     selectedCategoryId={selectedCategoryId} 
                     onCategorySelect={setSelectedCategoryId} 
                 />
                 <ProductGrid
+                  key={refreshKey}
                   categoryId={selectedCategoryId}
                   searchTerm={searchTerm}
                   onProductSelect={handleProductSelect}
@@ -331,11 +342,12 @@ export default function POSPage() {
             </Card>
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 h-full min-h-0">
             <Cart
               items={cart}
               onRemoveItem={handleRemoveItem}
-              onCheckout={(method) => handleCheckout(method)}
+              onUpdateQuantity={handleUpdateQuantity}
+              onCheckout={(method, details) => handleCheckout(method, details)}
               isProcessing={isProcessing}
               onApplySCPWD={() => setIsSCPWDModalOpen(true)}
               scPwdData={scPwdData}

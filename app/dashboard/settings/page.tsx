@@ -35,6 +35,9 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isZReadingLoading, setIsZReadingLoading] = useState(false)
   const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [historyData, setHistoryData] = useState<any[]>([])
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false)
   
   const [settings, setSettings] = useState({
     business_name: "",
@@ -116,6 +119,24 @@ export default function SettingsPage() {
       toast.error("An error occurred during Z-reading")
     } finally {
       setIsZReadingLoading(false)
+    }
+  }
+
+  const fetchHistory = async () => {
+    setIsHistoryLoading(true)
+    setIsHistoryOpen(true)
+    try {
+      const response = await fetch("/api/reports/z-reading/history")
+      const data = await response.json()
+      if (response.ok) {
+        setHistoryData(data)
+      } else {
+        toast.error("Failed to load reading history")
+      }
+    } catch (error) {
+      toast.error("Error loading reading history")
+    } finally {
+      setIsHistoryLoading(false)
     }
   }
 
@@ -258,8 +279,13 @@ export default function SettingsPage() {
                       {isZReadingLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5 mr-2" />}
                       Run Z-Reading
                     </Button>
-                    <Button className="flex-1 h-12 text-lg" variant="outline">
-                      <History className="h-5 w-5 mr-2" />
+                    <Button 
+                      className="flex-1 h-12 text-lg" 
+                      variant="outline"
+                      onClick={fetchHistory}
+                      disabled={isHistoryLoading}
+                    >
+                      {isHistoryLoading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <History className="h-5 w-5 mr-2" />}
                       Reading History
                     </Button>
                   </div>
@@ -346,6 +372,60 @@ export default function SettingsPage() {
               Print Report
             </Button>
             <Button onClick={() => setIsZSummaryOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-primary" />
+              Z-Reading History
+            </DialogTitle>
+            <DialogDescription>
+              Last 50 recorded business day closures.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {historyData.length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground italic">No Z-reading history found.</p>
+            ) : (
+              <div className="border rounded-md">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Date</th>
+                      <th className="px-4 py-2 text-left">Invoices</th>
+                      <th className="px-4 py-2 text-right">Total Sales</th>
+                      <th className="px-4 py-2 text-right">Grand Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyData.map((reading) => (
+                      <tr key={reading.id} className="border-t hover:bg-muted/50 transition-colors">
+                        <td className="px-4 py-3 font-medium">
+                          {new Date(reading.reading_date).toLocaleDateString()}
+                          <p className="text-[10px] text-muted-foreground">{new Date(reading.reading_date).toLocaleTimeString()}</p>
+                        </td>
+                        <td className="px-4 py-3 text-[11px] font-mono">
+                          {reading.beginning_invoice} - {reading.ending_invoice}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-primary">
+                          ₱{parseFloat(reading.total_sales).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-destructive font-bold">
+                          ₱{parseFloat(reading.accumulated_grand_total).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsHistoryOpen(false)}>Close History</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

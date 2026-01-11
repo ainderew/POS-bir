@@ -57,6 +57,9 @@ export interface Transaction {
   sc_pwd_name?: string
   
   payment_method: string
+  amount_tendered?: number
+  change_amount?: number
+  reference_number?: string
   item_count?: number
 }
 
@@ -115,6 +118,12 @@ export interface Shift {
   opening_fund: number
   theoretical_cash: number
   actual_cash: number
+  theoretical_gcash?: number
+  actual_gcash?: number
+  theoretical_maya?: number
+  actual_maya?: number
+  theoretical_card?: number
+  actual_card?: number
   variance: number
   is_synced: boolean
 }

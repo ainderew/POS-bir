@@ -1,13 +1,10 @@
--- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Settings Table (BIR compliance & system config)
 CREATE TABLE IF NOT EXISTS settings (
   key VARCHAR(50) PRIMARY KEY,
   value TEXT NOT NULL
 );
 
--- Initialize default settings
 INSERT INTO settings (key, value) VALUES 
 ('accumulated_grand_total', '0.00'),
 ('next_invoice_number', '1'),
@@ -19,7 +16,6 @@ INSERT INTO settings (key, value) VALUES
 ('auto_print', 'false')
 ON CONFLICT (key) DO NOTHING;
 
--- Categories Table
 CREATE TABLE IF NOT EXISTS categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL UNIQUE,
@@ -29,7 +25,6 @@ CREATE TABLE IF NOT EXISTS categories (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Products Table
 CREATE TABLE IF NOT EXISTS products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL,
@@ -51,18 +46,15 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Transactions Table (BIR Compliant)
 CREATE TABLE IF NOT EXISTS transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   invoice_number VARCHAR(20) UNIQUE NOT NULL,
   status VARCHAR(20) DEFAULT 'PAID' CHECK (status IN ('PAID', 'VOIDED')),
   void_reason TEXT,
-  authorized_by VARCHAR(50), -- Manager PIN/Name
+  authorized_by VARCHAR(50),
   pos_id UUID NOT NULL,
   is_synced BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  
-  -- Tax Breakdown (Mandatory for BIR)
   gross_sales DECIMAL(10, 2) NOT NULL,
   vatable_sales DECIMAL(10, 2) DEFAULT 0,
   vat_amount DECIMAL(10, 2) DEFAULT 0,
@@ -70,8 +62,6 @@ CREATE TABLE IF NOT EXISTS transactions (
   zero_rated_sales DECIMAL(10, 2) DEFAULT 0,
   total_discount DECIMAL(10, 2) DEFAULT 0,
   net_sales DECIMAL(10, 2) NOT NULL,
-  
-  -- SC/PWD Details
   pax_count INTEGER DEFAULT 1,
   senior_count INTEGER DEFAULT 0,
   sc_pwd_id VARCHAR(50),
@@ -80,7 +70,6 @@ CREATE TABLE IF NOT EXISTS transactions (
   payment_method VARCHAR(50) NOT NULL DEFAULT 'CASH'
 );
 
--- Transaction Items Table
 CREATE TABLE IF NOT EXISTS transaction_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,

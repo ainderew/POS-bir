@@ -13,16 +13,14 @@ import {
   YAxis, 
   ZAxis, 
   CartesianGrid, 
-  Tooltip, 
+  Tooltip as RechartsTooltip, 
   ResponsiveContainer,
   Cell,
   ReferenceLine
 } from "recharts"
 import { 
-  TrendingUp, 
   Package, 
   ShoppingCart, 
-  AlertTriangle, 
   BrainCircuit, 
   Zap,
   Target,
@@ -31,11 +29,16 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
-  AlertCircle
 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 export function StrategyTab() {
   const [activeTab, setActiveTab] = useState("market")
@@ -231,47 +234,75 @@ export function StrategyTab() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-auto max-h-[600px]">
-                  <table className="w-full text-sm text-left">
-                    <thead className="text-xs uppercase bg-muted sticky top-0 z-10">
-                      <tr>
-                        <th className="px-4 py-3">Item</th>
-                        <th className="px-4 py-3 text-center">Status</th>
-                        <th className="px-4 py-3 text-right">Burn Rate</th>
-                        <th className="px-4 py-3 text-right">Buy Qty</th>
-                        <th className="px-4 py-3 text-right">Est. Cost</th>
-                        <th className="px-4 py-3 text-center">In Budget</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {simulatedList.map((item: any) => (
-                        <tr key={item.id} className={!item.allocated ? "opacity-40 grayscale bg-muted/5" : ""}>
-                          <td className="px-4 py-3">
-                            <p className="font-bold">{item.name}</p>
-                            <p className="text-[10px] text-muted-foreground uppercase">{item.supplier_type}</p>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {item.isStockoutRisk ? (
-                              <Badge variant="destructive" className="h-5 text-[9px] px-1">🚨 STOCKOUT</Badge>
-                            ) : item.priority_tier === 'TIER_1' ? (
-                              <Badge className="h-5 text-[9px] px-1 bg-yellow-600">ANCHOR</Badge>
-                            ) : (
-                              <Badge variant="outline" className="h-5 text-[9px] px-1">STABLE</Badge>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono">{parseFloat(item.ads).toFixed(1)}/d</td>
-                          <td className="px-4 py-3 text-right font-bold">{item.recommendedQty}</td>
-                          <td className="px-4 py-3 text-right font-mono">₱{item.estimatedCost.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-center">
-                            {item.allocated ? (
-                              <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
-                            ) : (
-                              <XCircle className="h-5 w-5 text-muted-foreground/30 mx-auto" />
-                            )}
-                          </td>
+                  <TooltipProvider>
+                    <table className="w-full text-sm text-left">
+                      <thead className="text-xs uppercase bg-muted sticky top-0 z-10">
+                        <tr>
+                          <th className="px-4 py-3">Item</th>
+                          <th className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              Status
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[250px] p-3 shadow-xl border bg-popover text-popover-foreground">
+                                  <div className="space-y-2">
+                                    <p className="font-bold border-b pb-1">Procurement Status Guide</p>
+                                    <div>
+                                      <p className="text-destructive font-bold text-[11px]">🚨 STOCKOUT (High Risk)</p>
+                                      <p className="text-[10px] leading-tight">Predicted to run out in less than 24 hours. Highest priority.</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-yellow-600 font-bold text-[11px]">ANCHOR (Critical)</p>
+                                      <p className="text-[10px] leading-tight">Top 20% of sales volume. Essential for store foot traffic.</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground font-bold text-[11px]">STABLE (Normal)</p>
+                                      <p className="text-[10px] leading-tight">Normal performance with enough stock for at least one day.</p>
+                                    </div>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </th>
+                          <th className="px-4 py-3 text-right">Burn Rate</th>
+                          <th className="px-4 py-3 text-right">Buy Qty</th>
+                          <th className="px-4 py-3 text-right">Est. Cost</th>
+                          <th className="px-4 py-3 text-center">In Budget</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y">
+                        {simulatedList.map((item: any) => (
+                          <tr key={item.id} className={!item.allocated ? "opacity-40 grayscale bg-muted/5" : ""}>
+                            <td className="px-4 py-3">
+                              <p className="font-bold">{item.name}</p>
+                              <p className="text-[10px] text-muted-foreground uppercase">{item.supplier_type}</p>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {item.isStockoutRisk ? (
+                                <Badge variant="destructive" className="h-5 text-[9px] px-1">🚨 STOCKOUT</Badge>
+                              ) : item.priority_tier === 'TIER_1' ? (
+                                <Badge className="h-5 text-[9px] px-1 bg-yellow-600">ANCHOR</Badge>
+                              ) : (
+                                <Badge variant="outline" className="h-5 text-[9px] px-1">STABLE</Badge>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono">{parseFloat(item.ads).toFixed(1)}/d</td>
+                            <td className="px-4 py-3 text-right font-bold">{item.recommendedQty}</td>
+                            <td className="px-4 py-3 text-right font-mono">₱{item.estimatedCost.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-center">
+                              {item.allocated ? (
+                                <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
+                              ) : (
+                                <XCircle className="h-5 w-5 text-muted-foreground/30 mx-auto" />
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </TooltipProvider>
                 </div>
               </CardContent>
             </Card>
@@ -304,9 +335,9 @@ export function StrategyTab() {
                     label={{ value: 'Avg Unit Profit (₱)', angle: -90, position: 'insideLeft' }} 
                   />
                   <ZAxis type="number" dataKey="total_revenue" range={[60, 1000]} name="Impact" />
-                  <Tooltip 
+                  <RechartsTooltip 
                     cursor={{ strokeDasharray: '3 3' }} 
-                    content={({ active, payload }) => {
+                    content={({ active, payload }: any) => {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload
                         return (
