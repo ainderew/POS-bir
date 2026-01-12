@@ -17,6 +17,10 @@ export interface ElectronAPI {
   onRequestQuit: (callback: () => void) => void;
   onRequestReload: (callback: () => void) => void;
   onEmergencyExit: (callback: () => void) => void;
+
+  // Terminal Config
+  getTerminalId: () => Promise<string | null>;
+  saveTerminalId: (id: string) => Promise<boolean>;
 }
 
 declare global {

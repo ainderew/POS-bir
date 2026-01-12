@@ -4,6 +4,20 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const { exec, execSync } = require('child_process');
 const { Pool } = require('pg');
 
+let Store;
+let store;
+
+// Initialize Store dynamically (since it might be an ESM module)
+(async () => {
+  try {
+    const module = await import('electron-store');
+    Store = module.default;
+    store = new Store();
+  } catch (error) {
+    console.error('Failed to load electron-store:', error);
+  }
+})();
+
 let mainWindow;
 let pool;
 let canQuit = false;
@@ -129,6 +143,18 @@ ipcMain.handle('print-receipt', async (event, data) => {
 });
 
 ipcMain.handle('get-sync-status', () => syncStatus);
+
+ipcMain.handle('get-terminal-id', () => {
+  return store ? store.get('terminalId', null) : null;
+});
+
+ipcMain.handle('save-terminal-id', (event, id) => {
+  if (store) {
+    store.set('terminalId', id);
+    return true;
+  }
+  return false;
+});
 
 app.on('ready', () => {
   ensureDocker();

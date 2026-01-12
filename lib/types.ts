@@ -36,7 +36,7 @@ export interface Product extends SyncMetadata {
 export interface Transaction {
   id: string
   invoice_number: string
-  status: "PAID" | "VOIDED"
+  status: "PAID" | "VOIDED" | "REFUND"
   void_reason?: string
   authorized_by?: string
   pos_id: string
@@ -61,6 +61,8 @@ export interface Transaction {
   change_amount?: number
   reference_number?: string
   item_count?: number
+  void_authorized_by?: string
+  voided_at?: Date
 }
 
 export interface TransactionItem {
@@ -109,6 +111,59 @@ export interface Settings {
   auto_print: boolean
 }
 
+export type UserRole = "ADMIN" | "CASHIER" | "MANAGER"
+
+export interface User {
+  id: string
+  full_name: string
+  role: UserRole
+  is_active: boolean
+  created_at: Date
+  updated_at: Date
+  // Note: pin_hash is never exposed to frontend
+}
+
+export interface AuthResponse {
+  success: boolean
+  user?: User
+  error?: string
+}
+
+export interface Terminal {
+  id: string
+  pos_id: string
+  ptu_number: string
+  serial_number: string
+  current_state: "OPEN" | "CLOSED"
+  accumulated_grand_total: number
+  last_z_counter: number
+  created_at: Date
+  updated_at: Date
+  is_synced: boolean
+}
+
+export type AuditActionType =
+  | "USER_LOGIN"  // NEW - user authentication events
+  | "SHIFT_OPEN"
+  | "SHIFT_CLOSE"
+  | "CASH_IN"
+  | "CASH_OUT"
+  | "SAFE_DROP"
+  | "Z_READING"
+  | "MANUAL_AUDIT"
+
+export interface AuditLog {
+  id: string
+  user_id: string | null
+  shift_id: string | null
+  terminal_id: string | null
+  action_type: AuditActionType
+  audit_image: Buffer | null
+  audit_metadata: Record<string, any>
+  created_at: Date
+  is_synced: boolean
+}
+
 export interface Shift {
   id: string
   pos_id: string
@@ -126,6 +181,10 @@ export interface Shift {
   actual_card?: number
   variance: number
   is_synced: boolean
+  user_id?: string  // NEW - links shift to authenticated user
+  terminal_id?: string
+  snapshot_z_counter?: number
+  snapshot_accumulated_total?: number
 }
 
 export type CashMovementType = "CASH_IN" | "CASH_OUT" | "SAFE_DROP"

@@ -21,6 +21,8 @@ import {
   CreditCard,
   CheckCircle2,
 } from "lucide-react";
+import { AuditCamera } from "./audit-camera";
+import type { AuditCaptureResult } from "@/lib/audit-service";
 
 interface ShiftClosingDialogProps {
   isOpen: boolean;
@@ -30,6 +32,8 @@ interface ShiftClosingDialogProps {
     actualGcash: number;
     actualMaya: number;
     actualCard: number;
+    auditImage: string | null;
+    auditMetadata: Record<string, any>;
   }) => void;
 }
 
@@ -56,6 +60,7 @@ export function ShiftClosingDialog({
   const [actualMaya, setActualMaya] = useState("");
   const [actualCard, setActualCard] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [auditResult, setAuditResult] = useState<AuditCaptureResult | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -65,6 +70,7 @@ export function ShiftClosingDialog({
       setActualMaya("");
       setActualCard("");
       setIsSubmitting(false);
+      setAuditResult(null);
     }
   }, [isOpen]);
 
@@ -83,6 +89,8 @@ export function ShiftClosingDialog({
         actualGcash: parseFloat(actualGcash || "0"),
         actualMaya: parseFloat(actualMaya || "0"),
         actualCard: parseFloat(actualCard || "0"),
+        auditImage: auditResult?.image || null,
+        auditMetadata: auditResult?.metadata || {}
       });
     } finally {
       setIsSubmitting(false);
@@ -203,6 +211,12 @@ export function ShiftClosingDialog({
                   onChange={(e) => setActualCard(e.target.value)}
                 />
               </div>
+            </div>
+
+            <Separator />
+            <div className="space-y-2">
+              <Label>Closing Audit Photo</Label>
+              <AuditCamera onCapture={setAuditResult} disabled={isSubmitting} />
             </div>
 
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">

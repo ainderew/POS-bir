@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ShoppingCart, Package, BarChart3, ShieldCheck } from "lucide-react"
+import { ShoppingCart, Package, BarChart3, ShieldCheck, Monitor } from "lucide-react"
 
 export default function HomePage() {
   return (
@@ -25,6 +25,19 @@ export default function HomePage() {
               </CardContent>
             </Card>
           </Link>
+
+          <Link href="/register">
+             <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full border-dashed">
+               <CardHeader>
+                 <Monitor className="h-12 w-12 mb-4 text-muted-foreground" />
+                 <CardTitle>Terminal Setup</CardTitle>
+                 <CardDescription>Register this device if it's new</CardDescription>
+               </CardHeader>
+               <CardContent>
+                 <Button className="w-full" variant="secondary">Setup Terminal</Button>
+               </CardContent>
+             </Card>
+           </Link>
 
           <Link href="/inventory">
             <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">

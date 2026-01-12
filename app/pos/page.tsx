@@ -13,14 +13,18 @@ import { ShiftOpeningDialog } from "@/components/pos/shift-opening-dialog"
 import { ShiftClosingDialog } from "@/components/pos/shift-closing-dialog"
 import { CashMovementDialog, type CashMovementType } from "@/components/pos/cash-movements-dialog"
 import { ManagerAuthDialog } from "@/components/pos/manager-auth-dialog"
+import { AuthFlow } from "@/components/auth/auth-flow"
 import { Button } from "@/components/ui/button"
-import type { Product, CartItem, Shift } from "@/lib/types"
+import type { Product, CartItem, Shift, User } from "@/lib/types"
+import type { AuditCaptureResult } from "@/lib/audit-service"
 import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { CreditCard, Grid3x3, Wallet, Banknote, LogOut, Settings } from "lucide-react"
+import { useTerminal } from "@/hooks/use-terminal"
 
 export default function POSPage() {
   const router = useRouter()
+  const { terminalId } = useTerminal()
   const [cart, setCart] = useState<CartItem[]>([])
   const [weightProduct, setWeightProduct] = useState<Product | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -28,6 +32,11 @@ export default function POSPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [refreshKey, setRefreshKey] = useState(0)
   
+  // Authentication State
+  const [authenticatedUser, setAuthenticatedUser] = useState<User | null>(null)
+  const [authAuditResult, setAuthAuditResult] = useState<AuditCaptureResult | null>(null)
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+
   // Shift State
   const [activeShift, setActiveShift] = useState<Shift | null>(null)
   const [isOpeningShift, setIsOpeningShift] = useState(false)
@@ -89,19 +98,45 @@ export default function POSPage() {
       if (data) {
         setActiveShift(data)
       } else {
-        setIsOpeningShift(true)
+        // No active shift - trigger authentication flow
+        setIsAuthenticating(true)
       }
     } catch (e) {
       toast.error("Failed to verify shift status")
     }
   }
 
+  const handleAuthenticated = (user: User, auditResult?: AuditCaptureResult) => {
+    setAuthenticatedUser(user)
+    if (auditResult) {
+      setAuthAuditResult(auditResult)
+    }
+    setIsAuthenticating(false)
+    setIsOpeningShift(true)
+    toast.success(`Welcome, ${user.full_name}!`)
+  }
+
   const handleOpenShift = async (openingFund: number) => {
+    if (!authenticatedUser) {
+      toast.error("User not authenticated")
+      return
+    }
+    if (!terminalId) {
+      toast.error("Terminal configuration missing. Please restart.")
+      return
+    }
     try {
       const res = await fetch("/api/shifts/current", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ openingFund })
+        body: JSON.stringify({
+          userId: authenticatedUser.id,
+          terminalId,
+          openingFund,
+          // Pass the audit result captured during authentication
+          auditImage: authAuditResult?.image || null,
+          auditMetadata: authAuditResult?.metadata || {}
+        })
       })
       const data = await res.json()
       if (res.ok) {
@@ -352,6 +387,8 @@ export default function POSPage() {
               onApplySCPWD={() => setIsSCPWDModalOpen(true)}
               scPwdData={scPwdData}
               onClearSCPWD={() => setScPwdData(null)}
+              shiftId={activeShift?.id}
+              cashierId={authenticatedUser?.id}
             />
           </div>
         </div>
@@ -364,7 +401,7 @@ export default function POSPage() {
         onCancel={() => setWeightProduct(null)}
       />
 
-      <SCPWDDialog 
+      <SCPWDDialog
         isOpen={isSCPWDModalOpen}
         onClose={() => setIsSCPWDModalOpen(false)}
         onConfirm={(data) => {
@@ -372,6 +409,13 @@ export default function POSPage() {
             toast.success(`SC/PWD Discount applied for ${data.name}`)
         }}
       />
+
+      {isAuthenticating && (
+        <AuthFlow 
+          onAuthenticated={handleAuthenticated} 
+          terminalId={terminalId}
+        />
+      )}
 
       <ShiftOpeningDialog
         isOpen={isOpeningShift}

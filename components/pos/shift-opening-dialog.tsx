@@ -59,7 +59,6 @@ export function ShiftOpeningDialog({ isOpen, onConfirm }: ShiftOpeningDialogProp
               type="number"
               value={openingFund}
               onChange={(e) => setOpeningFund(e.target.value)}
-              autoFocus
             />
           </div>
         </div>

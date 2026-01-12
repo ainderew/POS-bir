@@ -3,7 +3,15 @@ import { queryOne, transaction } from "@/lib/db"
 
 export async function POST(request: Request) {
   try {
-    const { shiftId, actualCash, actualGcash, actualMaya, actualCard } = await request.json()
+    const {
+      shiftId,
+      actualCash,
+      actualGcash,
+      actualMaya,
+      actualCard,
+      auditImage,      // Base64 data URL from camera
+      auditMetadata    // Metadata from camera capture
+    } = await request.json()
 
     if (!shiftId || actualCash === undefined) {
       return NextResponse.json({ error: "Missing shift details" }, { status: 400 })
@@ -70,10 +78,19 @@ export async function POST(request: Request) {
       // Total variance across all accounts
       const totalVariance = cashVariance + gcashVariance + mayaVariance + cardVariance
 
-      // 5. Close Shift with Audit Data
+      // 5. Calculate shift's net sales for terminal update
+      const shiftTotalResult = await client.query(
+        `SELECT COALESCE(SUM(net_sales), 0) as total
+         FROM transactions
+         WHERE created_at >= $1 AND status = 'PAID'`,
+        [shift.start_time]
+      )
+      const shiftNetSales = parseFloat(shiftTotalResult.rows[0].total)
+
+      // 6. Close Shift with Audit Data
       const updatedShift = await client.query(
-        `UPDATE shifts 
-         SET status = 'CLOSED', 
+        `UPDATE shifts
+         SET status = 'CLOSED',
              end_time = CURRENT_TIMESTAMP,
              theoretical_cash = $1,
              actual_cash = $2,
@@ -92,6 +109,55 @@ export async function POST(request: Request) {
           theoreticalMaya, actualMaya,
           theoreticalCard, actualCard,
           shiftId
+        ]
+      )
+
+      // 7. Update Terminal Counters (if terminal_id exists)
+      if (shift.terminal_id) {
+        await client.query(
+          `UPDATE terminals
+           SET accumulated_grand_total = accumulated_grand_total + $1,
+               current_state = 'CLOSED',
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2`,
+          [shiftNetSales, shift.terminal_id]
+        )
+      }
+
+      // 8. Convert audit image to BYTEA
+      let imageBuffer = null
+      if (auditImage) {
+        try {
+          const base64Data = auditImage.split(',')[1]
+          imageBuffer = Buffer.from(base64Data, 'base64')
+        } catch (err) {
+          console.warn("[shifts] Failed to process audit image:", err)
+        }
+      }
+
+      // 9. Create closing audit log
+      await client.query(
+        `INSERT INTO audit_logs (
+          shift_id,
+          terminal_id,
+          action_type,
+          audit_image,
+          audit_metadata
+        ) VALUES ($1, $2, 'SHIFT_CLOSE', $3, $4)`,
+        [
+          shiftId,
+          shift.terminal_id,
+          imageBuffer,
+          JSON.stringify({
+            ...auditMetadata,
+            variance: {
+              cash: cashVariance,
+              gcash: gcashVariance,
+              maya: mayaVariance,
+              card: cardVariance,
+              total: totalVariance
+            }
+          })
         ]
       )
 

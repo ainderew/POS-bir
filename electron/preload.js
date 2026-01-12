@@ -14,4 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRequestQuit: (callback) => ipcRenderer.on('request-quit-auth', () => callback()),
   onRequestReload: (callback) => ipcRenderer.on('request-reload-auth', () => callback()),
   onEmergencyExit: (callback) => ipcRenderer.on('trigger-emergency-exit', () => callback()),
+
+  // Terminal Configuration (Persistence)
+  getTerminalId: () => ipcRenderer.invoke('get-terminal-id'),
+  saveTerminalId: (id) => ipcRenderer.invoke('save-terminal-id', id),
 });
