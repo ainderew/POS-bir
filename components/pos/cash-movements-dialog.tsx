@@ -27,10 +27,11 @@ interface CashMovementDialogProps {
   isOpen: boolean
   onClose: () => void
   onConfirm: (type: CashMovementType, amount: number, reason: string) => void
+  defaultType?: CashMovementType
 }
 
-export function CashMovementDialog({ isOpen, onClose, onConfirm }: CashMovementDialogProps) {
-  const [type, setType] = useState<CashMovementType>("CASH_OUT")
+export function CashMovementDialog({ isOpen, onClose, onConfirm, defaultType = "CASH_OUT" }: CashMovementDialogProps) {
+  const [type, setType] = useState<CashMovementType>(defaultType)
   const [amount, setAmount] = useState("")
   const [reason, setReason] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -40,9 +41,9 @@ export function CashMovementDialog({ isOpen, onClose, onConfirm }: CashMovementD
       setIsLoading(false)
       setAmount("")
       setReason("")
-      setType("CASH_OUT")
+      setType(defaultType)
     }
-  }, [isOpen])
+  }, [isOpen, defaultType])
 
   const handleConfirm = async () => {
     setIsLoading(true)

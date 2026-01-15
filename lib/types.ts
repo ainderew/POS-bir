@@ -111,7 +111,7 @@ export interface Settings {
   auto_print: boolean
 }
 
-export type UserRole = "ADMIN" | "CASHIER" | "MANAGER"
+export type UserRole = "ADMIN" | "CASHIER" | "MANAGER" | "OWNER"
 
 export interface User {
   id: string

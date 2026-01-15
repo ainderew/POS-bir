@@ -76,11 +76,15 @@ export function ProductGrid({ categoryId, searchTerm, onProductSelect }: Product
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-2 min-h-[40px]">
               <h4 className="font-bold text-sm leading-tight line-clamp-2 uppercase">{product.name}</h4>
-              {Number(product.stock_level) <= Number(product.low_stock_threshold) && (
+              {Number(product.stock_level) <= 0 ? (
+                <Badge variant="destructive" className="shrink-0 text-[9px] animate-pulse">
+                  NO STOCK
+                </Badge>
+              ) : Number(product.stock_level) <= Number(product.low_stock_threshold) ? (
                 <Badge className="shrink-0 text-[9px] bg-warning text-warning-foreground animate-pulse">
                   LOW
                 </Badge>
-              )}
+              ) : null}
             </div>
             <div className="pt-2 border-t border-border/50">
               <p className="text-xl font-black text-primary">₱{Number(product.selling_price).toFixed(2)}</p>

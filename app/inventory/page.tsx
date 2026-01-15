@@ -79,7 +79,8 @@ export default function InventoryPage() {
     fetchProducts(searchTerm, activeTab === "low-stock")
   }
 
-  const lowStockCount = products.filter((p) => p.is_low_stock).length
+  const noStockCount = products.filter((p) => Number(p.stock_level) <= 0).length
+  const lowStockCount = products.filter((p) => Number(p.stock_level) > 0 && p.is_low_stock).length
 
   return (
     <div className="min-h-screen bg-background">
@@ -102,7 +103,7 @@ export default function InventoryPage() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Products</CardTitle>
@@ -115,11 +116,21 @@ export default function InventoryPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
+              <CardTitle className="text-sm font-medium">No Stock</CardTitle>
               <AlertTriangle className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-destructive">{lowStockCount}</div>
+              <div className="text-2xl font-bold text-destructive">{noStockCount}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-warning" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-warning">{lowStockCount}</div>
             </CardContent>
           </Card>
 

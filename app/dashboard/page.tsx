@@ -18,6 +18,8 @@ import type { DateRange } from "react-day-picker"
 import type { Transaction, FinancialReport } from "@/lib/types"
 import { toast } from "sonner"
 
+import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard"
+
 export default function DashboardPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [transactions, setTransactions] = useState<(Transaction & { item_count?: number })[]>([])
@@ -26,9 +28,6 @@ export default function DashboardPage() {
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   
-  // View Toggle State
-  const [viewMode, setViewMode] = useState<"analytics" | "audit">("analytics")
-
   useEffect(() => {
     fetchData()
   }, [dateRange])
@@ -107,23 +106,14 @@ export default function DashboardPage() {
                 </Button>
               </Link>
               <h1 className="text-4xl font-bold text-balance">
-                {viewMode === "analytics" ? "Dashboard & Analytics" : "Audit Logs & Security"}
+                Store Dashboard
               </h1>
             </div>
             <p className="text-muted-foreground mt-2">
-              {viewMode === "analytics" 
-                ? "Monitor your store performance and sales insights" 
-                : "Review security events, login attempts, and shift records"}
+              Business intelligence, transaction history, and security audits
             </p>
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant={viewMode === "audit" ? "default" : "outline"}
-              onClick={() => setViewMode(viewMode === "analytics" ? "audit" : "analytics")}
-            >
-              <Shield className="h-4 w-4 mr-2" />
-              {viewMode === "analytics" ? "Audit Logs" : "Back to Dashboard"}
-            </Button>
             <Link href="/dashboard/settings">
               <Button variant="outline">
                 <Settings className="h-4 w-4 mr-2" />
@@ -133,24 +123,32 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {viewMode === "analytics" ? (
-          <>
-            <div className="flex flex-wrap gap-3">
-              <Button variant="outline" onClick={() => handleQuickFilter("today")}>
-                Today
-              </Button>
-              <Button variant="outline" onClick={() => handleQuickFilter("month")}>
-                This Month
-              </Button>
-              <Button variant="outline" onClick={() => handleQuickFilter("year")}>
-                This Year
-              </Button>
-              <Button variant="outline" onClick={() => handleQuickFilter("all")}>
-                All Time
-              </Button>
-              <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
-            </div>
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline" onClick={() => handleQuickFilter("today")}>
+            Today
+          </Button>
+          <Button variant="outline" onClick={() => handleQuickFilter("month")}>
+            This Month
+          </Button>
+          <Button variant="outline" onClick={() => handleQuickFilter("year")}>
+            This Year
+          </Button>
+          <Button variant="outline" onClick={() => handleQuickFilter("all")}>
+            All Time
+          </Button>
+          <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
+        </div>
 
+        <Tabs defaultValue="overview" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="transactions">Transactions</TabsTrigger>
+            <TabsTrigger value="products">Product Performance</TabsTrigger>
+            <TabsTrigger value="strategy">Strategy</TabsTrigger>
+            <TabsTrigger value="audit">Audit Logs</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <StatCard
                 title="Total Revenue"
@@ -182,69 +180,65 @@ export default function DashboardPage() {
               />
             </div>
 
-            <Tabs defaultValue="transactions">
-              <TabsList>
-                <TabsTrigger value="transactions">Transaction History</TabsTrigger>
-                <TabsTrigger value="products">Product Performance</TabsTrigger>
-                <TabsTrigger value="strategy">Strategy & Growth</TabsTrigger>
-              </TabsList>
+            <ExecutiveDashboard dateRange={dateRange} />
+          </TabsContent>
 
-              <TabsContent value="transactions" className="mt-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Transaction History</CardTitle>
-                    <CardDescription>Complete list of all sales transactions</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <TransactionsTable 
-                      transactions={transactions} 
-                      onViewDetails={handleViewDetails} 
-                      onViewRef={async (invoice) => {
-                        try {
-                          const res = await fetch(`/api/transactions/lookup?invoiceNumber=${invoice}`)
-                          const data = await res.json()
-                          if (res.ok) {
-                            handleViewDetails(data.id)
-                          } else {
-                            toast.error("Transaction not found")
-                          }
-                        } catch (err) {
-                          toast.error("Failed to lookup transaction")
-                        }
-                      }}
-                    />
-                  </CardContent>
-                </Card>
-              </TabsContent>
+          <TabsContent value="transactions">
+            <Card>
+              <CardHeader>
+                <CardTitle>Transaction History</CardTitle>
+                <CardDescription>Complete list of all sales transactions</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TransactionsTable 
+                  transactions={transactions} 
+                  onViewDetails={handleViewDetails} 
+                  onViewRef={async (invoice) => {
+                    try {
+                      const res = await fetch(`/api/transactions/lookup?invoiceNumber=${invoice}`)
+                      const data = await res.json()
+                      if (res.ok) {
+                        handleViewDetails(data.id)
+                      } else {
+                        toast.error("Transaction not found")
+                      }
+                    } catch (err) {
+                      toast.error("Failed to lookup transaction")
+                    }
+                  }}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              <TabsContent value="products" className="mt-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Product Performance</CardTitle>
-                    <CardDescription>Analysis of product sales and profitability</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ProductPerformanceTable products={financialReport?.items || []} />
-                  </CardContent>
-                </Card>
-              </TabsContent>
+          <TabsContent value="products">
+            <Card>
+              <CardHeader>
+                <CardTitle>Product Performance</CardTitle>
+                <CardDescription>Analysis of product sales and profitability</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ProductPerformanceTable products={financialReport?.items || []} />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              <TabsContent value="strategy" className="mt-6">
-                <StrategyTab />
-              </TabsContent>
-            </Tabs>
-          </>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Audit Logs</CardTitle>
-              <CardDescription>System events, shift changes, and security audits</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AuditLogsTable logs={auditLogs} />
-            </CardContent>
-          </Card>
-        )}
+          <TabsContent value="strategy">
+            <StrategyTab />
+          </TabsContent>
+
+          <TabsContent value="audit">
+            <Card>
+              <CardHeader>
+                <CardTitle>Audit Logs</CardTitle>
+                <CardDescription>System events, shift changes, and security audits</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AuditLogsTable logs={auditLogs} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <TransactionDetailsDialog
