@@ -217,7 +217,7 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
       
-      <QuickRestockModal />
+      <QuickRestockModal onSuccess={() => fetchProducts(searchTerm, activeTab === "low-stock")} />
     </div>
   )
 }

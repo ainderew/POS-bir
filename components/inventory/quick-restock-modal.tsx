@@ -9,7 +9,11 @@ import { useInventoryStore } from "@/stores/use-inventory-store"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 
-export function QuickRestockModal() {
+interface QuickRestockModalProps {
+  onSuccess?: () => void
+}
+
+export function QuickRestockModal({ onSuccess }: QuickRestockModalProps) {
   const { isRestockModalOpen, activeProduct, closeModals } = useInventoryStore()
   const [addQty, setAddQty] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -42,9 +46,7 @@ export function QuickRestockModal() {
         if (res.ok) {
             toast.success(`Stock updated for ${activeProduct.name}`)
             closeModals()
-            // In a real app, trigger a refresh of the product list via SWR/TanStack Query
-            // For now, we rely on page refresh or local state updates if we added that logic
-            window.location.reload() // Brute force refresh for this MVP step
+            if (onSuccess) onSuccess()
         } else {
             toast.error("Failed to update stock")
         }

@@ -74,7 +74,10 @@ export function calculateTransactionTotals(
   let totalDiscount = 0
 
   items.forEach((item) => {
-    const itemGross = item.product.selling_price * item.quantity
+    // Wholesale Logic Integration
+    const activePrice = item.active_price !== undefined ? item.active_price : item.product.selling_price
+    
+    const itemGross = activePrice * item.quantity
     grossSales += itemGross
 
     // Senior Share logic: The portion of the item that is VAT EXEMPT

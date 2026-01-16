@@ -13,6 +13,16 @@ interface CartState {
   setActiveShift: (shift: Shift | null) => void;
 }
 
+const calculateActivePrice = (product: Product, qty: number) => {
+  const threshold = Number(product.wholesale_threshold) || 0;
+  const wholesalePrice = Number(product.wholesale_price) || 0;
+
+  if (threshold > 0 && qty >= threshold && wholesalePrice > 0) {
+    return wholesalePrice;
+  }
+  return Number(product.selling_price);
+};
+
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
@@ -36,10 +46,15 @@ export const useCartStore = create<CartState>()(
             toast.error(`Only ${stockLevel} available`);
             return false;
           }
+          
           set({
             items: items.map((item) =>
               item.product.id === product.id
-                ? { ...item, quantity: newQuantity }
+                ? { 
+                    ...item, 
+                    quantity: newQuantity,
+                    active_price: calculateActivePrice(item.product, newQuantity)
+                  }
                 : item
             ),
           });
@@ -49,7 +64,13 @@ export const useCartStore = create<CartState>()(
                 toast.error(`Only ${stockLevel} available`);
                 return false;
             }
-            set({ items: [...items, { product, quantity }] });
+            set({ 
+              items: [...items, { 
+                product, 
+                quantity,
+                active_price: calculateActivePrice(product, quantity)
+              }] 
+            });
         }
         return true;
       },
@@ -63,7 +84,13 @@ export const useCartStore = create<CartState>()(
       updateQuantity: (productId: string, quantity: number) => {
         set((state) => ({
             items: state.items.map(item => 
-                item.product.id === productId ? { ...item, quantity } : item
+                item.product.id === productId 
+                  ? { 
+                      ...item, 
+                      quantity,
+                      active_price: calculateActivePrice(item.product, quantity)
+                    } 
+                  : item
             )
         }));
       },

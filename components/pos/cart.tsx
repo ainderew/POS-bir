@@ -313,9 +313,32 @@ export function Cart({
                         </button>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-muted-foreground uppercase font-semibold">
-                          {item.product.unit_type === "WEIGHT" ? "kg" : "pcs"} @ ₱{Number(item.product.selling_price).toFixed(2)}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-muted-foreground uppercase font-semibold">
+                            {item.product.unit_type === "WEIGHT" ? "kg" : "pcs"} @
+                          </span>
+                          {item.active_price !== undefined && item.active_price < item.product.selling_price ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-muted-foreground line-through">₱{Number(item.product.selling_price).toFixed(2)}</span>
+                              <span className="text-[10px] text-green-600 font-bold">₱{Number(item.active_price).toFixed(2)}</span>
+                              <Badge variant="outline" className="text-[8px] h-3 px-1 border-green-600 text-green-600 leading-none uppercase font-bold">Bulk</Badge>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground font-semibold">₱{Number(item.product.selling_price).toFixed(2)}</span>
+                          )}
+                        </div>
+                        
+                        {/* Upsell Hint */}
+                        {item.product.wholesale_threshold !== undefined && 
+                         item.product.wholesale_threshold !== null &&
+                         item.product.wholesale_threshold > 0 && 
+                         item.quantity < item.product.wholesale_threshold && 
+                         (item.product.wholesale_threshold - item.quantity) <= 5 && (
+                           <p className="text-[9px] text-orange-600 font-bold animate-pulse">
+                             Add {item.product.wholesale_threshold - item.quantity} more for ₱{Number(item.product.wholesale_price).toFixed(2)} each!
+                           </p>
+                        )}
+
                         <div className="flex items-center gap-1">
                           <Badge variant="outline" className="text-[9px] h-3.5 px-1 leading-none">{item.product.tax_category.replace('_', ' ')}</Badge>
                           {item.quantity > item.product.stock_level && (
@@ -324,7 +347,9 @@ export function Cart({
                         </div>
                       </div>
                     </div>
-                    <div className="mt-1 font-bold text-sm text-primary">₱{(Number(item.product.selling_price) * Number(item.quantity)).toFixed(2)}</div>
+                    <div className="mt-1 font-bold text-sm text-primary">
+                      ₱{(Number(item.active_price || item.product.selling_price) * Number(item.quantity)).toFixed(2)}
+                    </div>
                   </div>
                 </div>
               ))}

@@ -57,6 +57,8 @@ export interface Product extends SyncMetadata {
   supplier_type: SupplierType
   is_promo: boolean
   promo_price: number | null
+  wholesale_price?: number | null
+  wholesale_threshold?: number | null
   category_name?: string
   is_low_stock?: boolean
 }
@@ -111,6 +113,7 @@ export interface TransactionItem {
 export interface CartItem {
   product: Product
   quantity: number
+  active_price?: number // Calculated price (retail or wholesale)
 }
 
 export interface FinancialReport {

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { toast } from "sonner"
 import type { Product, Category } from "@/lib/types"
 import JsBarcode from "jsbarcode"
@@ -26,6 +27,18 @@ const productSchema = z.object({
   category_id: z.string().optional().nullable(),
   tax_category: z.enum(["VATABLE", "VAT_EXEMPT", "ZERO_RATED"]),
   supplier_type: z.enum(["WHOLESALER", "WET_MARKET", "DIRECT_DELIVERY"]),
+  wholesale_price: z.coerce.number().min(0, "Wholesale price must be positive").optional().nullable(),
+  wholesale_threshold: z.coerce.number().min(0, "Threshold must be positive").optional().nullable(),
+}).refine(data => {
+  if (data.wholesale_threshold && data.wholesale_threshold > 0) {
+    if (data.wholesale_threshold <= 1) return false; // Must be bulk (2+)
+    if (!data.wholesale_price || data.wholesale_price <= 0) return false;
+    if (data.wholesale_price >= data.selling_price) return false;
+  }
+  return true;
+}, {
+  message: "Wholesale must trigger at Qty 2+, have a price set, and be lower than retail price",
+  path: ["wholesale_price"],
 })
 
 type ProductFormData = z.infer<typeof productSchema>
@@ -61,6 +74,8 @@ export function ProductForm({ product, categories, onSuccess, onCancel, onCatego
       defaultValues: product ? {
       ...product,
       category_id: product.category_id || undefined,
+      wholesale_price: product.wholesale_price || 0,
+      wholesale_threshold: product.wholesale_threshold || 0,
     } : {
       barcode: scannedBarcode || "", // Pre-fill from scan
       unit_type: "QUANTITY",
@@ -69,6 +84,8 @@ export function ProductForm({ product, categories, onSuccess, onCancel, onCatego
       notify_low_stock: false,
       stock_level: 0,
       low_stock_threshold: 0,
+      wholesale_price: 0,
+      wholesale_threshold: 0,
     },
 
   })
@@ -360,6 +377,41 @@ export function ProductForm({ product, categories, onSuccess, onCancel, onCatego
             onCheckedChange={(checked) => setValue("notify_low_stock", checked)}
           />
         </div>
+
+        <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="wholesale">
+            <AccordionTrigger>Wholesale & Bulk Pricing</AccordionTrigger>
+            <AccordionContent className="space-y-4 pt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="wholesale_threshold">Trigger Quantity (Min)</Label>
+                  <Input 
+                    id="wholesale_threshold" 
+                    type="number" 
+                    {...register("wholesale_threshold")} 
+                    placeholder="e.g. 10" 
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Qty required to activate discount. Set to 0 to disable.
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="wholesale_price">Wholesale Price ($)</Label>
+                  <Input 
+                    id="wholesale_price" 
+                    type="number" 
+                    step="0.01" 
+                    {...register("wholesale_price")} 
+                    placeholder="0.00" 
+                  />
+                  {errors.wholesale_price && (
+                    <p className="text-sm text-destructive mt-1">{errors.wholesale_price.message}</p>
+                  )}
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
         <div className="space-y-3">
           <Label htmlFor="barcode">Barcode</Label>
