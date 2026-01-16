@@ -22,10 +22,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { CreditCard, Grid3x3, Wallet, Banknote, LogOut, Settings } from "lucide-react"
 import { useTerminal } from "@/hooks/use-terminal"
 
+import { useCartStore } from "@/stores/use-cart-store"
+
 export default function POSPage() {
   const router = useRouter()
   const { terminalId } = useTerminal()
-  const [cart, setCart] = useState<CartItem[]>([])
+  
+  // Global Cart Store
+  const { items: cart, addItem, removeItem, updateQuantity, clearCart, setActiveShift: setStoreShift } = useCartStore()
+  
   const [weightProduct, setWeightProduct] = useState<Product | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
@@ -90,6 +95,12 @@ export default function POSPage() {
     }
     setIsManagerAuthOpen(false)
   }
+
+  useEffect(() => {
+    if (activeShift) {
+        setStoreShift(activeShift)
+    }
+  }, [activeShift, setStoreShift])
 
   const checkActiveShift = async () => {
     try {
@@ -201,7 +212,7 @@ export default function POSPage() {
     if (product.unit_type === "WEIGHT") {
       setWeightProduct(product)
     } else {
-      addToCart(product, 1)
+      addItem(product, 1)
     }
   }
 
@@ -213,30 +224,14 @@ export default function POSPage() {
         return
       }
 
-      addToCart(weightProduct, weight)
+      addItem(weightProduct, weight)
       setWeightProduct(null)
     }
   }
 
-  const addToCart = (product: Product, quantity: number) => {
-    const existingItem = cart.find((item) => item.product.id === product.id)
-    const stockLevel = Number(product.stock_level)
-
-    if (existingItem) {
-      const newQuantity = existingItem.quantity + quantity
-      if (newQuantity > stockLevel) {
-        toast.error(`Only ${stockLevel} available`)
-        return
-      }
-      setCart(cart.map((item) => (item.product.id === product.id ? { ...item, quantity: newQuantity } : item)))
-    } else {
-      setCart([...cart, { product, quantity }])
-    }
-    toast.success(`Added ${product.name} to cart`)
-  }
-
+  // Helper Wrappers for Cart Component
   const handleRemoveItem = (productId: string) => {
-    setCart(cart.filter((item) => item.product.id !== productId))
+    removeItem(productId)
     toast.info("Item removed from cart")
   }
 
@@ -255,7 +250,7 @@ export default function POSPage() {
       return
     }
 
-    setCart(cart.map((i) => (i.product.id === productId ? { ...i, quantity: newQuantity } : i)))
+    updateQuantity(productId, newQuantity)
   }
 
   const handleCheckout = async (paymentMethod: string = "CASH", details?: { amountTendered?: number, referenceNumber?: string }) => {
@@ -309,7 +304,7 @@ export default function POSPage() {
           }
         }
 
-        setCart([])
+        clearCart()
         setScPwdData(null)
         setRefreshKey(prev => prev + 1)
       } else {

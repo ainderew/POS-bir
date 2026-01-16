@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import type { Product, Category } from "@/lib/types"
 import JsBarcode from "jsbarcode"
-import { Loader2, BarcodeIcon } from "lucide-react"
+import { Loader2, BarcodeIcon, Plus, Check, X } from "lucide-react"
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
@@ -30,16 +30,25 @@ const productSchema = z.object({
 
 type ProductFormData = z.infer<typeof productSchema>
 
+import { useInventoryStore } from "@/stores/use-inventory-store"
+
 interface ProductFormProps {
   product?: Product
   categories: Category[]
   onSuccess: () => void
   onCancel: () => void
+  onCategoryCreated?: (category: Category) => void
 }
 
-export function ProductForm({ product, categories, onSuccess, onCancel }: ProductFormProps) {
+export function ProductForm({ product, categories, onSuccess, onCancel, onCategoryCreated }: ProductFormProps) {
+  const { scannedBarcode } = useInventoryStore()
   const [isGeneratingBarcode, setIsGeneratingBarcode] = useState(false)
   const [barcodeImage, setBarcodeImage] = useState<string | null>(null)
+  
+  // New Category State
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [isSavingCategory, setIsSavingCategory] = useState(false)
 
   const {
     register,
@@ -53,6 +62,7 @@ export function ProductForm({ product, categories, onSuccess, onCancel }: Produc
       ...product,
       category_id: product.category_id || undefined,
     } : {
+      barcode: scannedBarcode || "", // Pre-fill from scan
       unit_type: "QUANTITY",
       tax_category: "VATABLE",
       supplier_type: "WHOLESALER",
@@ -108,6 +118,34 @@ export function ProductForm({ product, categories, onSuccess, onCancel }: Produc
     }
   }
 
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) return
+    setIsSavingCategory(true)
+    try {
+      const response = await fetch("/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newCategoryName }),
+      })
+      
+      const newCategory = await response.json()
+      
+      if (response.ok) {
+        toast.success("Category created")
+        if (onCategoryCreated) onCategoryCreated(newCategory)
+        setValue("category_id", newCategory.id)
+        setIsCreatingCategory(false)
+        setNewCategoryName("")
+      } else {
+        toast.error(newCategory.error || "Failed to create category")
+      }
+    } catch (error) {
+      toast.error("Failed to create category")
+    } finally {
+      setIsSavingCategory(false)
+    }
+  }
+
   const onSubmit = async (data: ProductFormData) => {
     try {
       const url = product ? `/api/products/${product.id}` : "/api/products"
@@ -143,22 +181,51 @@ export function ProductForm({ product, categories, onSuccess, onCancel }: Produc
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="category_id">Category</Label>
-            <Select
-              onValueChange={(value) => setValue("category_id", value || null)}
-              defaultValue={product?.category_id || undefined}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    {category.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between mb-2">
+               <Label htmlFor="category_id">Category</Label>
+               {isCreatingCategory ? (
+                   <div className="flex items-center gap-1">
+                       <Button size="icon" className="h-5 w-5 bg-green-600 hover:bg-green-700" type="button" onClick={handleCreateCategory} disabled={isSavingCategory}>
+                           {isSavingCategory ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                       </Button>
+                       <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive hover:bg-destructive/10" type="button" onClick={() => setIsCreatingCategory(false)}>
+                           <X className="h-3 w-3" />
+                       </Button>
+                   </div>
+               ) : (
+                   <Button size="sm" variant="ghost" className="h-5 px-2 text-[10px] text-blue-600 hover:text-blue-700" type="button" onClick={() => setIsCreatingCategory(true)}>
+                       <Plus className="h-3 w-3 mr-1" />
+                       New
+                   </Button>
+               )}
+            </div>
+            
+            {isCreatingCategory ? (
+                <Input 
+                    value={newCategoryName}
+                    onChange={e => setNewCategoryName(e.target.value)}
+                    placeholder="New Category Name"
+                    className="h-10"
+                    autoFocus
+                />
+            ) : (
+                <Select
+                  onValueChange={(value) => setValue("category_id", value || null)}
+                  defaultValue={product?.category_id || undefined}
+                  value={watch("category_id") || undefined}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+            )}
           </div>
 
           <div>
@@ -229,13 +296,39 @@ export function ProductForm({ product, categories, onSuccess, onCancel }: Produc
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="stock_level">Stock Level {unitType === "WEIGHT" ? "(kg)" : "(pieces)"}</Label>
-            <Input
-              id="stock_level"
-              type="number"
-              step={unitType === "WEIGHT" ? "0.001" : "1"}
-              {...register("stock_level")}
-              placeholder="0"
-            />
+            {product ? (
+                 <div className="flex gap-2">
+                     <Input
+                        id="stock_level"
+                        disabled
+                        value={product.stock_level}
+                        className="bg-muted"
+                     />
+                     <Button type="button" size="sm" variant="outline" onClick={() => {
+                         // Close the form first
+                         onCancel()
+                         
+                         // Open Quick Restock Modal properly via store
+                         // We need to set the state directly or use the handleScan simulation
+                         // Ideally we should have an explicit 'openRestockFor(product)' action
+                         // but for now, we can manually set the state as we are in a trusted component
+                         setTimeout(() => {
+                             useInventoryStore.getState().setRestockModalOpen(true)
+                             useInventoryStore.getState().activeProduct = product as any // Type casting as quick fix or update store type
+                         }, 100)
+                     }}>
+                         Restock
+                     </Button>
+                 </div>
+            ) : (
+                <Input
+                id="stock_level"
+                type="number"
+                step={unitType === "WEIGHT" ? "0.001" : "1"}
+                {...register("stock_level")}
+                placeholder="0"
+                />
+            )}
             {errors.stock_level && <p className="text-sm text-destructive mt-1">{errors.stock_level.message}</p>}
           </div>
 

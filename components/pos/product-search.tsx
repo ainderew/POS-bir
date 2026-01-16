@@ -27,29 +27,6 @@ export function ProductSearch({ onProductSelect, searchTerm: externalSearchTerm,
   useEffect(() => {
     // Focus input on mount
     inputRef.current?.focus()
-
-    // Handle barcode scanner input (rapid keyboard entries ending with Enter)
-    const handleKeyPress = (e: KeyboardEvent) => {
-      const currentTime = Date.now()
-      const timeSinceLastKey = currentTime - lastKeystrokeRef.current
-      lastKeystrokeRef.current = currentTime
-
-      // If rapid input (< 50ms between keys), likely a barcode scanner
-      if (timeSinceLastKey < 50) {
-        if (e.key === "Enter") {
-          // Search by barcode
-          searchByBarcode(barcodeBufferRef.current)
-          barcodeBufferRef.current = ""
-        } else if (e.key.length === 1) {
-          barcodeBufferRef.current += e.key
-        }
-      } else {
-        barcodeBufferRef.current = e.key.length === 1 ? e.key : ""
-      }
-    }
-
-    window.addEventListener("keypress", handleKeyPress)
-    return () => window.removeEventListener("keypress", handleKeyPress)
   }, [])
 
   const searchByBarcode = async (barcode: string) => {

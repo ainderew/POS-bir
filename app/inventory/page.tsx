@@ -13,12 +13,25 @@ import Link from "next/link"
 import type { Product, Category } from "@/lib/types"
 import { toast } from "sonner"
 
+import { QuickRestockModal } from "@/components/inventory/quick-restock-modal"
+import { useInventoryStore } from "@/stores/use-inventory-store"
+
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [searchTerm, setSearchTerm] = useState("")
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingProduct, setEditingProduct] = useState<Product | undefined>()
+  // Remove local modal state in favor of store
+  // const [isDialogOpen, setIsDialogOpen] = useState(false)
+  // const [editingProduct, setEditingProduct] = useState<Product | undefined>()
+  
+  const { 
+      isAddModalOpen, 
+      setAddModalOpen, 
+      activeProduct, 
+      setActiveProduct,
+      setScannedBarcode
+  } = useInventoryStore()
+
   const [activeTab, setActiveTab] = useState("all")
 
   useEffect(() => {
@@ -61,18 +74,23 @@ export default function InventoryPage() {
   }
 
   const handleAddProduct = () => {
-    setEditingProduct(undefined)
-    setIsDialogOpen(true)
+    setActiveProduct(null)
+    setScannedBarcode(null)
+    setAddModalOpen(true)
   }
 
   const handleEditProduct = (product: Product) => {
-    setEditingProduct(product)
-    setIsDialogOpen(true)
+    setActiveProduct(product)
+    setAddModalOpen(true)
   }
 
   const handleFormSuccess = () => {
-    setIsDialogOpen(false)
+    setAddModalOpen(false)
     fetchProducts(searchTerm, activeTab === "low-stock")
+  }
+
+  const handleCategoryCreated = (newCategory: Category) => {
+    setCategories(prev => [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name)))
   }
 
   const handleDeleteProduct = () => {
@@ -179,24 +197,27 @@ export default function InventoryPage() {
         </Card>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isAddModalOpen} onOpenChange={setAddModalOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingProduct ? "Edit Product" : "Add New Product"}</DialogTitle>
+            <DialogTitle>{activeProduct ? "Edit Product" : "Add New Product"}</DialogTitle>
             <DialogDescription>
-              {editingProduct
+              {activeProduct
                 ? "Update product details and stock information"
                 : "Enter product details to add to inventory"}
             </DialogDescription>
           </DialogHeader>
           <ProductForm
-            product={editingProduct}
+            product={activeProduct || undefined}
             categories={categories}
             onSuccess={handleFormSuccess}
-            onCancel={() => setIsDialogOpen(false)}
+            onCancel={() => setAddModalOpen(false)}
+            onCategoryCreated={handleCategoryCreated}
           />
         </DialogContent>
       </Dialog>
+      
+      <QuickRestockModal />
     </div>
   )
 }
