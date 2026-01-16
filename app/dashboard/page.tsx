@@ -114,6 +114,12 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Link href="/dashboard/credit">
+              <Button variant="default" className="bg-orange-600 hover:bg-orange-700">
+                <Shield className="h-4 w-4 mr-2" />
+                Credit & Collections
+              </Button>
+            </Link>
             <Link href="/dashboard/settings">
               <Button variant="outline">
                 <Settings className="h-4 w-4 mr-2" />

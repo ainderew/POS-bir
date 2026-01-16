@@ -4,8 +4,8 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Trash2, ShoppingCart, Loader2, UserCheck, X, Banknote, CreditCard, Wallet, CheckCircle2, Smartphone, Hand } from "lucide-react"
-import type { CartItem } from "@/lib/types"
+import { Trash2, ShoppingCart, Loader2, UserCheck, X, Banknote, CreditCard, Wallet, CheckCircle2, Smartphone, Hand, FileText, UserPlus, Users } from "lucide-react"
+import type { CartItem, Customer } from "@/lib/types"
 import { calculateTransactionTotals } from "@/lib/ph-tax"
 import { Badge } from "@/components/ui/badge"
 import type { SCPWDData } from "./sc-pwd-dialog"
@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { ManagerOverrideModal } from "./manager-override-modal"
+import { CustomerSelectDialog } from "./customer-select-dialog"
+import { QuantityDialog } from "./quantity-dialog"
 import { toast } from "sonner"
 
 interface CartProps {
@@ -45,6 +47,14 @@ export function Cart({
   const [amountTendered, setAmountTendered] = useState<string>("")
   const [referenceNumber, setReferenceNumber] = useState<string>("")
   
+  // Customer Selection State
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false)
+  
+  // Quick Quantity Modal State
+  const [isQtyModalOpen, setIsQtyModalOpen] = useState(false)
+  const [qtyItem, setQtyItem] = useState<CartItem | null>(null)
+
   // Void / Manager Override State
   const [itemToVoid, setItemToVoid] = useState<CartItem | null>(null)
   const [isVoidModalOpen, setIsVoidModalOpen] = useState(false)
@@ -65,13 +75,55 @@ export function Cart({
       ? (!amountTendered || parseFloat(amountTendered) < totals.netSales)
       : (paymentMethod === "GCASH" || paymentMethod === "MAYA" || paymentMethod === "CARD")
         ? (referenceNumber.length < 4)
-        : false
+        : (paymentMethod === "STORE_CREDIT" ? referenceNumber.length < 1 : false)
   )
 
   useEffect(() => {
     setAmountTendered("")
-    setReferenceNumber("")
-  }, [paymentMethod])
+    // If we have a selected customer and switch to Store Credit, auto-fill ID
+    if (paymentMethod === "STORE_CREDIT" && selectedCustomer) {
+        setReferenceNumber(selectedCustomer.id)
+    } else {
+        setReferenceNumber("")
+    }
+  }, [paymentMethod, selectedCustomer])
+
+  // Clear customer when transaction is done (simplistic approach, ideally parent resets)
+  useEffect(() => {
+     if (items.length === 0) {
+         setSelectedCustomer(null)
+     }
+  }, [items.length])
+
+  // Listen for F2 shortcut and 'q' for quantity
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // Ignore if typing in an input
+        if (
+            document.activeElement instanceof HTMLInputElement ||
+            document.activeElement instanceof HTMLTextAreaElement
+        ) {
+            return
+        }
+
+        if (e.key === "F2") {
+            e.preventDefault()
+            setIsCustomerModalOpen(true)
+        }
+
+        if (e.key === "q" || e.key === "Q") {
+            e.preventDefault()
+            if (items.length > 0) {
+                // Select the last item added
+                const lastItem = items[items.length - 1]
+                setQtyItem(lastItem)
+                setIsQtyModalOpen(true)
+            }
+        }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [items]) // Re-bind when items change so we get the latest list
 
   // --- VOID LOGIC ---
 
@@ -146,6 +198,14 @@ export function Cart({
               Cart ({items.length})
             </div>
             <div className="flex gap-1">
+              <Button size="sm" variant="ghost" onClick={() => setIsCustomerModalOpen(true)} className="text-xs h-8 px-2" title="Select Customer (F2)">
+                  <Users className="h-4 w-4 mr-1" />
+                  {selectedCustomer ? (
+                      <span className="font-bold truncate max-w-[100px]">{selectedCustomer.full_name}</span>
+                  ) : (
+                      <span className="text-muted-foreground">Walk-in</span>
+                  )}
+              </Button>
               {items.length > 0 && (
                  <Button size="sm" variant="outline" onClick={initiateClearCart} className="text-xs h-8 text-destructive border-destructive/30 hover:bg-destructive/10">
                    <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -160,6 +220,24 @@ export function Cart({
               )}
             </div>
           </CardTitle>
+          
+          {selectedCustomer && (
+              <div className="flex items-center justify-between bg-muted/50 p-2 rounded-md mt-2 border border-dashed">
+                  <div className="text-xs">
+                      <p className="font-bold">{selectedCustomer.full_name}</p>
+                      <p className={cn(
+                          "font-mono font-bold",
+                          selectedCustomer.current_debt_balance > 0 ? "text-red-600" : "text-green-600"
+                      )}>
+                          Balance: ₱{selectedCustomer.current_debt_balance.toFixed(2)}
+                      </p>
+                  </div>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" onClick={() => setSelectedCustomer(null)}>
+                      <X className="h-3 w-3" />
+                  </Button>
+              </div>
+          )}
+
           {scPwdData && (
             <div className="flex items-center justify-between bg-primary/10 p-2 rounded-md mt-2">
               <div className="text-xs">
@@ -199,7 +277,15 @@ export function Cart({
                       <div className="flex items-center border rounded-md overflow-hidden h-8 bg-background">
                         <button 
                           className="px-2.5 h-full bg-muted hover:bg-accent text-muted-foreground transition-colors"
-                          onClick={() => onUpdateQuantity(item.product.id, item.quantity - (item.product.unit_type === "WEIGHT" ? 0.1 : 1))}
+                          onClick={() => {
+                            const step = item.product.unit_type === "WEIGHT" ? 0.1 : 1
+                            const newQuantity = item.quantity - step
+                            if (newQuantity <= 0) {
+                              initiateRemoveItem(item)
+                            } else {
+                              onUpdateQuantity(item.product.id, newQuantity)
+                            }
+                          }}
                         >
                           -
                         </button>
@@ -210,7 +296,13 @@ export function Cart({
                           step={item.product.unit_type === "WEIGHT" ? "0.001" : "1"}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value)
-                            if (!isNaN(val)) onUpdateQuantity(item.product.id, val)
+                            if (!isNaN(val)) {
+                              if (val <= 0) {
+                                initiateRemoveItem(item)
+                              } else {
+                                onUpdateQuantity(item.product.id, val)
+                              }
+                            }
                           }}
                         />
                         <button 
@@ -281,6 +373,10 @@ export function Cart({
                     <CreditCard className="h-4 w-4" />
                     Card
                   </ToggleGroupItem>
+                  <ToggleGroupItem value="STORE_CREDIT" className="flex-1 gap-2 h-10 px-3 data-[state=on]:bg-orange-600 data-[state=on]:text-white">
+                    <FileText className="h-4 w-4" />
+                    Credit
+                  </ToggleGroupItem>
                 </ToggleGroup>
               </div>
 
@@ -312,7 +408,6 @@ export function Cart({
                       className="text-lg font-bold h-12"
                       value={amountTendered}
                       onChange={(e) => setAmountTendered(e.target.value)}
-                      autoFocus
                     />
                     <div className="grid grid-cols-4 gap-1.5">
                       {[20, 50, 100, 200, 500, 1000].map((num) => (
@@ -332,6 +427,24 @@ export function Cart({
                       <p className="text-[10px] font-bold text-destructive uppercase">Insufficient amount</p>
                     )}
                   </div>
+                ) : paymentMethod === "STORE_CREDIT" ? (
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                       <Label htmlFor="cust-id" className="text-xs font-bold uppercase">
+                         Customer ID
+                       </Label>
+                    </div>
+                    <Input 
+                      id="cust-id"
+                      placeholder="Enter Customer UUID"
+                      className="text-lg font-bold h-12"
+                      value={referenceNumber}
+                      onChange={(e) => setReferenceNumber(e.target.value)}
+                    />
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase italic">
+                      Enter the Customer ID to charge to their account.
+                    </p>
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     <div className="flex justify-between">
@@ -350,7 +463,6 @@ export function Cart({
                       value={referenceNumber}
                       onChange={(e) => setReferenceNumber(e.target.value)}
                       maxLength={16}
-                      autoFocus
                     />
                     <p className="text-[10px] font-medium text-muted-foreground uppercase italic">
                       Verify this on the store phone or terminal before proceeding.
@@ -431,6 +543,33 @@ export function Cart({
             ? "Manager authorization is required to clear the entire cart."
             : `Manager authorization is required to remove ${itemToVoid?.product.name || "item"}.`
         }
+      />
+      
+      <CustomerSelectDialog 
+        isOpen={isCustomerModalOpen}
+        onClose={() => setIsCustomerModalOpen(false)}
+        onSelect={(c) => {
+            setSelectedCustomer(c)
+            // If they are paying by credit, update the ref number immediately
+            if (paymentMethod === "STORE_CREDIT") {
+                setReferenceNumber(c.id)
+            }
+        }}
+      />
+      
+      <QuantityDialog
+        isOpen={isQtyModalOpen}
+        onClose={() => setIsQtyModalOpen(false)}
+        item={qtyItem}
+        onConfirm={(qty) => {
+            if (qtyItem) {
+                if (qty <= 0) {
+                    initiateRemoveItem(qtyItem)
+                } else {
+                    onUpdateQuantity(qtyItem.product.id, qty)
+                }
+            }
+        }}
       />
     </>
   )

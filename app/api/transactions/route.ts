@@ -60,7 +60,8 @@ export async function POST(request: Request) {
       paxCount,
       seniorCount,
       amount_tendered,
-      reference_number
+      reference_number, // This will be customerId for STORE_CREDIT
+      shiftId // Ensure shiftId is passed or inferred?
     } = await request.json()
     
     const posId = getPosId()
@@ -74,6 +75,35 @@ export async function POST(request: Request) {
     const changeAmount = amount_tendered ? parseFloat(amount_tendered) - totals.netSales : 0
 
     const result = await transaction(async (client) => {
+      // 1.1 Store Credit Validation
+      if (payment_method === "STORE_CREDIT") {
+        if (!reference_number) {
+           throw new Error("Customer ID is required for Store Credit")
+        }
+        
+        const customerRes = await client.query(
+          "SELECT * FROM customers WHERE id = $1", 
+          [reference_number]
+        )
+        
+        if (customerRes.rows.length === 0) {
+           throw new Error("Customer not found")
+        }
+        
+        const customer = customerRes.rows[0]
+        const currentDebt = Number(customer.current_debt_balance)
+        const limit = Number(customer.credit_limit)
+        const newBalance = currentDebt + totals.netSales
+        
+        if (customer.credit_status === 'BLOCKED') {
+           throw new Error("Customer account is BLOCKED")
+        }
+        
+        if (newBalance > limit) {
+           throw new Error(`Credit limit exceeded. Limit: ${limit}, New Balance: ${newBalance}`)
+        }
+      }
+
       // 2. Get and Increment Invoice Number
       const invoiceResult = await client.query(
         "UPDATE settings SET value = (value::int + 1)::text WHERE key = 'next_invoice_number' RETURNING value"
@@ -132,6 +162,33 @@ export async function POST(request: Request) {
         if (updateResult.rows.length === 0) {
           throw new Error(`Insufficient stock for product: ${item.product.name}`)
         }
+      }
+
+      // 5. Handle Store Credit Updates
+      if (payment_method === "STORE_CREDIT") {
+         const customerId = reference_number
+         
+         // Update Customer Balance & Metrics
+         const updateCustomer = await client.query(
+            `UPDATE customers 
+             SET current_debt_balance = current_debt_balance + $1, 
+                 total_spend = total_spend + $1,
+                 last_visit_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $2
+             RETURNING current_debt_balance`,
+             [totals.netSales, customerId]
+         )
+         
+         const newBalance = Number(updateCustomer.rows[0].current_debt_balance)
+         
+         // Add Ledger Entry
+         await client.query(
+            `INSERT INTO credit_ledger (
+                customer_id, transaction_id, entry_type, amount, running_balance, pos_id
+            ) VALUES ($1, $2, 'CHARGE', $3, $4, $5)`,
+            [customerId, newTransaction.id, totals.netSales, newBalance, posId]
+         )
       }
 
       return newTransaction

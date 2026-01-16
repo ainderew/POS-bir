@@ -5,8 +5,36 @@ export type SupplierType = "WHOLESALER" | "WET_MARKET" | "DIRECT_DELIVERY"
 export interface SyncMetadata {
   pos_id: string
   is_synced: boolean
-  updated_at: Date
-  created_at: Date
+}
+
+export type CreditStatus = "ACTIVE" | "BLOCKED" | "OVERDUE"
+
+export interface Customer extends SyncMetadata {
+  id: string
+  full_name: string
+  phone_number?: string
+  email?: string
+  address?: string
+  credit_limit: number
+  current_debt_balance: number
+  credit_status: CreditStatus
+  last_payment_date?: Date
+  total_spend: number
+  last_visit_at?: Date
+}
+
+export type LedgerEntryType = "CHARGE" | "PAYMENT" | "ADJUSTMENT"
+
+export interface CreditLedgerEntry extends SyncMetadata {
+  id: string
+  customer_id: string
+  transaction_id?: string
+  shift_id?: string
+  entry_type: LedgerEntryType
+  amount: number
+  running_balance: number
+  occurred_at: Date
+  notes?: string
 }
 
 export interface Category extends SyncMetadata {
