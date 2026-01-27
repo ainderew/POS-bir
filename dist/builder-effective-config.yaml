@@ -1,0 +1,22 @@
+directories:
+  output: dist
+  buildResources: build
+appId: com.generalstore.pos
+productName: General Store POS
+files:
+  - filter:
+      - electron/**/*
+      - public/**/*
+      - .next/standalone/**/*
+      - .next/static/**/*
+mac:
+  category: public.app-category.business
+  target: dmg
+  extendInfo:
+    NSCameraUsageDescription: This app requires camera access for shift audit photos (BIR compliance).
+    NSCameraUseContinuityCameraDeviceType: true
+win:
+  target: nsis
+linux:
+  target: AppImage
+electronVersion: 39.2.7
