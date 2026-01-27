@@ -1,14 +1,10 @@
 ignoredBuiltDependencies:
   - electron-winstaller
   - libpq
-  - node-usb
   - sharp
-  - usb
 
 onlyBuiltDependencies:
   - electron
   - electron-winstaller
   - libpq
-  - node-usb
   - sharp
-  - usb
