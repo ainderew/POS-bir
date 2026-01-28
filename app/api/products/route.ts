@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { query, getPosId } from "@/lib/db"
 import type { Product } from "@/lib/types"
 
@@ -69,11 +70,12 @@ export async function POST(request: Request) {
     }
 
     const newProduct = await query<Product>(
-      `INSERT INTO products 
-        (name, barcode, selling_price, cost_price, stock_level, unit_type, low_stock_threshold, notify_low_stock, category_id, tax_category, supplier_type, pos_id) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+      `INSERT INTO products
+        (id, name, barcode, selling_price, cost_price, stock_level, unit_type, low_stock_threshold, notify_low_stock, category_id, tax_category, supplier_type, pos_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
+        crypto.randomUUID(),
         name,
         barcode || null,
         selling_price,

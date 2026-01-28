@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { query } from "@/lib/db"
 
 export async function GET(
@@ -32,10 +33,10 @@ export async function POST(
     if (!note) return NextResponse.json({ error: "Note is required" }, { status: 400 })
 
     const result = await query(`
-      INSERT INTO collection_logs (customer_id, note, user_id)
-      VALUES ($1, $2, $3)
+      INSERT INTO collection_logs (id, customer_id, note, user_id)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
-    `, [id, note, userId || null])
+    `, [crypto.randomUUID(), id, note, userId || null])
     
     return NextResponse.json(result[0], { status: 201 })
   } catch (error) {

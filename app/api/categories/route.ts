@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { query, getPosId } from "@/lib/db"
 import type { Category } from "@/lib/types"
 
@@ -22,8 +23,8 @@ export async function POST(request: Request) {
     }
 
     const newCategory = await query<Category>(
-      "INSERT INTO categories (name, pos_id) VALUES ($1, $2) RETURNING *", 
-      [name, posId]
+      "INSERT INTO categories (id, name, pos_id) VALUES ($1, $2, $3) RETURNING *",
+      [crypto.randomUUID(), name, posId]
     )
 
     return NextResponse.json(newCategory[0], { status: 201 })

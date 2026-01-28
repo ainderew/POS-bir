@@ -11,25 +11,21 @@ export async function GET(request: Request) {
       return NextResponse.json([])
     }
     
-    // Trigram search on full_name OR exact/partial match on phone
-    // We prioritize matches that start with the query, then fuzzy matches
+    // Search on full_name or phone_number using LIKE (case-insensitive in SQLite for ASCII)
     // Ordered by last_visit_at (recent customers first)
     const sql = `
-      SELECT * FROM customers 
-      WHERE 
-        full_name ILIKE $1 
-        OR phone_number ILIKE $1
-        OR full_name % $2 -- Trigram fuzzy match
-      ORDER BY 
+      SELECT * FROM customers
+      WHERE
+        full_name LIKE $1
+        OR phone_number LIKE $1
+      ORDER BY
         last_visit_at DESC NULLS LAST,
         total_spend DESC,
         full_name ASC
       LIMIT 20
     `
-    
-    // Note: % operator requires pg_trgm extension
-    // We use a broader search param for ILIKE and the exact query for trigram
-    const params = [`%${q}%`, q]
+
+    const params = [`%${q}%`]
     
     const customers = await query<Customer>(sql, params)
     

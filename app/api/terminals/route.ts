@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { query, queryOne, getPosId } from "@/lib/db"
 
 // GET: Fetch all terminals
@@ -31,10 +32,10 @@ export async function POST(request: Request) {
     }
 
     const terminal = await queryOne(
-      `INSERT INTO terminals (pos_id, ptu_number, serial_number)
-       VALUES ($1, $2, $3)
+      `INSERT INTO terminals (id, pos_id, ptu_number, serial_number)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [posId, ptuNumber, serialNumber]
+      [crypto.randomUUID(), posId, ptuNumber, serialNumber]
     )
 
     return NextResponse.json(terminal, { status: 201 })

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { query, getPosId } from "@/lib/db"
 import { Customer } from "@/lib/types"
 
@@ -46,14 +47,15 @@ export async function POST(request: Request) {
     
     const result = await query(
       `INSERT INTO customers (
-        full_name, phone_number, email, address, credit_limit, pos_id
-       ) VALUES ($1, $2, $3, $4, $5, $6)
+        id, full_name, phone_number, email, address, credit_limit, pos_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [
-        full_name, 
-        phone_number || null, 
-        email || null, 
-        address || null, 
+        crypto.randomUUID(),
+        full_name,
+        phone_number || null,
+        email || null,
+        address || null,
         credit_limit || 0,
         posId
       ]

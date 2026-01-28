@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import bcrypt from "bcrypt"
+import crypto from "crypto"
 import { queryOne, transaction } from "@/lib/db"
 
 export async function POST(request: Request) {
@@ -64,17 +65,18 @@ export async function POST(request: Request) {
       if (!skipAudit) {
         await client.query(
           `INSERT INTO audit_logs (
-            user_id,
+            id, user_id,
             action_type,
             audit_image,
             audit_metadata
-          ) VALUES ($1, 'MANUAL_AUDIT', $2, $3)`,
+          ) VALUES ($1, $2, 'MANUAL_AUDIT', $3, $4)`,
           [
+            crypto.randomUUID(),
             user.id,
             imageBuffer,
             JSON.stringify({
               ...auditMetadata,
-              event: 'USER_LOGIN', // Explicitly note this is a login event
+              event: 'USER_LOGIN',
               login_time: new Date().toISOString(),
               role: user.role
             })

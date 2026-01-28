@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { queryOne, transaction, getPosId } from "@/lib/db"
 
 export async function GET() {
@@ -100,15 +101,16 @@ export async function POST(request: Request) {
       // 5. Record the Z-Reading
       const zReadingResult = await client.query(`
         INSERT INTO daily_readings (
-          type, total_sales, total_vat, beginning_invoice, ending_invoice, accumulated_grand_total, pos_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          id, type, total_sales, total_vat, beginning_invoice, ending_invoice, accumulated_grand_total, pos_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
       `, [
-        'Z', 
-        stats.total_net, 
-        stats.total_vat, 
-        stats.start_invoice, 
-        stats.end_invoice, 
+        crypto.randomUUID(),
+        'Z',
+        stats.total_net,
+        stats.total_vat,
+        stats.start_invoice,
+        stats.end_invoice,
         newGrandTotal,
         posId
       ])

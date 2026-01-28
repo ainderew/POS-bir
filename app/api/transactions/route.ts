@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { query, transaction, getPosId } from "@/lib/db"
 import { calculateTransactionTotals } from "@/lib/ph-tax"
 import type { CartItem, Transaction } from "@/lib/types"
@@ -114,14 +115,15 @@ export async function POST(request: Request) {
       // 3. Create transaction with BIR breakdown
       const transactionResult = await client.query(
         `INSERT INTO transactions (
-          invoice_number, pos_id, 
+          id, invoice_number, pos_id,
           gross_sales, vatable_sales, vat_amount, vat_exempt_sales, zero_rated_sales, total_discount, net_sales,
           pax_count, senior_count, sc_pwd_id, sc_pwd_name,
           payment_method, amount_tendered, change_amount, reference_number
-        ) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING *`,
         [
+          crypto.randomUUID(),
           invoiceNumber, posId,
           totals.grossSales, totals.vatableSales, totals.vatAmount, totals.vatExemptSales, totals.zeroRatedSales, totals.totalDiscount, totals.netSales,
           paxCount || 1, seniorCount || 0, scPwdData?.idNumber || null, scPwdData?.name || null,
@@ -137,15 +139,16 @@ export async function POST(request: Request) {
       // 4. Insert items and update stock
       for (const item of cart as CartItem[]) {
         await client.query(
-          `INSERT INTO transaction_items 
-           (transaction_id, product_id, quantity_sold, price_at_sale, cost_at_sale, tax_category, pos_id) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          `INSERT INTO transaction_items
+           (id, transaction_id, product_id, quantity_sold, price_at_sale, cost_at_sale, tax_category, pos_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
-            newTransaction.id, 
-            item.product.id, 
-            item.quantity, 
-            item.product.selling_price, 
-            item.product.cost_price, 
+            crypto.randomUUID(),
+            newTransaction.id,
+            item.product.id,
+            item.quantity,
+            item.product.selling_price,
+            item.product.cost_price,
             item.product.tax_category,
             posId
           ],
@@ -185,9 +188,9 @@ export async function POST(request: Request) {
          // Add Ledger Entry
          await client.query(
             `INSERT INTO credit_ledger (
-                customer_id, transaction_id, entry_type, amount, running_balance, pos_id
-            ) VALUES ($1, $2, 'CHARGE', $3, $4, $5)`,
-            [customerId, newTransaction.id, totals.netSales, newBalance, posId]
+                id, customer_id, transaction_id, entry_type, amount, running_balance, pos_id
+            ) VALUES ($1, $2, $3, 'CHARGE', $4, $5, $6)`,
+            [crypto.randomUUID(), customerId, newTransaction.id, totals.netSales, newBalance, posId]
          )
       }
 

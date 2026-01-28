@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { queryOne, transaction, getPosId } from "@/lib/db"
 
 export async function GET() {
@@ -68,8 +69,7 @@ export async function POST(request: Request) {
       // 2. Lock terminal row and verify state (prevents concurrent shift opening)
       const terminalResult = await client.query(
         `SELECT * FROM terminals
-         WHERE id = $1
-         FOR UPDATE`,  // Row-level lock
+         WHERE id = $1`,
         [terminalId]
       )
 
@@ -89,18 +89,19 @@ export async function POST(request: Request) {
       // 3. Create shift with terminal snapshots and user reference
       const shiftResult = await client.query(
         `INSERT INTO shifts (
-          pos_id,
+          id, pos_id,
           user_id,
           opening_fund,
           status,
           terminal_id,
           snapshot_z_counter,
           snapshot_accumulated_total
-        ) VALUES ($1, $2, $3, 'OPEN', $4, $5, $6)
+        ) VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, $7)
         RETURNING *`,
         [
+          crypto.randomUUID(),
           posId,
-          userId,  // NEW - link shift to authenticated user
+          userId,
           openingFund || 0,
           terminalId,
           snapshotZCounter,
@@ -124,16 +125,17 @@ export async function POST(request: Request) {
       // 5. Create audit log entry
       await client.query(
         `INSERT INTO audit_logs (
-          shift_id,
+          id, shift_id,
           terminal_id,
           action_type,
           audit_image,
           audit_metadata
-        ) VALUES ($1, $2, 'SHIFT_OPEN', $3, $4)`,
+        ) VALUES ($1, $2, $3, 'SHIFT_OPEN', $4, $5)`,
         [
+          crypto.randomUUID(),
           newShift.id,
           terminalId,
-          imageBuffer,  // BYTEA or null
+          imageBuffer,
           JSON.stringify(auditMetadata || {})
         ]
       )

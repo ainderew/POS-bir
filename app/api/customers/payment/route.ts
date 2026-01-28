@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { transaction, getPosId } from "@/lib/db"
 
 export async function POST(request: Request) {
@@ -38,18 +39,18 @@ export async function POST(request: Request) {
         // 3. Create Ledger Entry
         await client.query(
             `INSERT INTO credit_ledger (
-                customer_id, shift_id, entry_type, amount, running_balance, notes, pos_id
-            ) VALUES ($1, $2, 'PAYMENT', $3, $4, $5, $6)`,
-            [customerId, shiftId || null, payAmount, newBalance, `Payment via ${paymentMethod} ${reference ? '('+reference+')' : ''}. ${notes || ''}`, posId]
+                id, customer_id, shift_id, entry_type, amount, running_balance, notes, pos_id
+            ) VALUES ($1, $2, $3, 'PAYMENT', $4, $5, $6, $7)`,
+            [crypto.randomUUID(), customerId, shiftId || null, payAmount, newBalance, `Payment via ${paymentMethod} ${reference ? '('+reference+')' : ''}. ${notes || ''}`, posId]
         )
         
         // 4. Record Cash Movement for physical cash
         if (shiftId && paymentMethod === 'CASH') {
             await client.query(
                 `INSERT INTO cash_movements (
-                    shift_id, type, amount, reason, is_synced
-                ) VALUES ($1, 'CASH_IN', $2, $3, FALSE)`,
-                [shiftId, payAmount, `Debt Payment - ${customer.full_name}`]
+                    id, shift_id, type, amount, reason, is_synced
+                ) VALUES ($1, $2, 'CASH_IN', $3, $4, FALSE)`,
+                [crypto.randomUUID(), shiftId, payAmount, `Debt Payment - ${customer.full_name}`]
             )
         }
         

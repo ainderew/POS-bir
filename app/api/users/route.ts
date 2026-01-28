@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import bcrypt from "bcrypt"
+import crypto from "crypto"
 import { query, queryOne } from "@/lib/db"
 
 // GET: List all active users (for identity selection grid)
@@ -56,10 +57,10 @@ export async function POST(request: Request) {
 
     // Create user
     const user = await queryOne(
-      `INSERT INTO users (full_name, pin_hash, role)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (id, full_name, pin_hash, role)
+       VALUES ($1, $2, $3, $4)
        RETURNING id, full_name, role, is_active, created_at, updated_at`,
-      [full_name, pinHash, role]
+      [crypto.randomUUID(), full_name, pinHash, role]
     )
 
     return NextResponse.json(user, { status: 201 })

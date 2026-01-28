@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { queryOne, getPosId } from "@/lib/db"
 
 export async function POST(request: Request) {
@@ -10,10 +11,10 @@ export async function POST(request: Request) {
     }
 
     const movement = await queryOne(
-      `INSERT INTO cash_movements (shift_id, type, amount, reason) 
-       VALUES ($1, $2, $3, $4) 
+      `INSERT INTO cash_movements (id, shift_id, type, amount, reason)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [shiftId, type, amount, reason]
+      [crypto.randomUUID(), shiftId, type, amount, reason]
     )
 
     return NextResponse.json(movement, { status: 201 })

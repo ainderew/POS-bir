@@ -1,5 +1,6 @@
 
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { queryOne, transaction } from "@/lib/db"
 import { dataUrlToBase64 } from "@/lib/audit-service"
 import * as bcrypt from "bcrypt"
@@ -61,12 +62,13 @@ export async function POST(request: Request) {
         // Insert into voids table (Detailed tracking)
         await client.query(
           `INSERT INTO voids (
-             shift_id, cashier_id, manager_id, 
+             id, shift_id, cashier_id, manager_id,
              item_details, reason, audit_image, occurred_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
           [
+            crypto.randomUUID(),
             shiftId,
-            cashierId || null, // Optional if not provided
+            cashierId || null,
             managerId,
             JSON.stringify(itemDetails),
             reason,
@@ -77,13 +79,14 @@ export async function POST(request: Request) {
         // Insert into audit_logs table (High-level audit trail)
         await client.query(
           `INSERT INTO audit_logs (
-             action_type,
+             id, action_type,
              user_id,
              shift_id,
              audit_image,
              audit_metadata
-           ) VALUES ($1, $2, $3, $4, $5)`,
+           ) VALUES ($1, $2, $3, $4, $5, $6)`,
           [
+            crypto.randomUUID(),
             'LINE_VOID',
             managerId,
             shiftId,

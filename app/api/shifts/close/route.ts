@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { queryOne, transaction } from "@/lib/db"
 
 export async function POST(request: Request) {
@@ -138,13 +139,14 @@ export async function POST(request: Request) {
       // 9. Create closing audit log
       await client.query(
         `INSERT INTO audit_logs (
-          shift_id,
+          id, shift_id,
           terminal_id,
           action_type,
           audit_image,
           audit_metadata
-        ) VALUES ($1, $2, 'SHIFT_CLOSE', $3, $4)`,
+        ) VALUES ($1, $2, $3, 'SHIFT_CLOSE', $4, $5)`,
         [
+          crypto.randomUUID(),
           shiftId,
           shift.terminal_id,
           imageBuffer,

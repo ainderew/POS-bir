@@ -1,8 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-const { exec, execSync } = require('child_process');
-const { Pool } = require('pg');
 
 let Store;
 let store;
@@ -19,7 +18,6 @@ let store;
 })();
 
 let mainWindow;
-let pool;
 let canQuit = false;
 
 // Sync State
@@ -30,23 +28,39 @@ let syncStatus = {
   error: null
 };
 
-// Database connection
-function initDb() {
-  pool = new Pool({
-    host: process.env.POSTGRES_HOST || 'localhost',
-    port: parseInt(process.env.POSTGRES_PORT || '54320'),
-    database: process.env.POSTGRES_DATABASE || 'pos_db',
-    user: process.env.POSTGRES_USER || 'postgres',
-    password: process.env.POSTGRES_PASSWORD || 'postgres',
-  });
+// SQLite Database initialization
+function initSqlite() {
+  const Database = require('better-sqlite3');
+  const dbPath = path.join(app.getPath('userData'), 'pos.db');
+  process.env.SQLITE_PATH = dbPath;
+
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+
+  // Run schema if tables don't exist
+  const tableCheck = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").get();
+  if (!tableCheck) {
+    const schemaPath = path.join(__dirname, '../scripts/sqlite_schema.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf-8');
+    db.exec(schema);
+    console.log('[POS] Database initialized at:', dbPath);
+  }
+
+  db.close(); // Close; lib/db.ts will open its own connection
 }
 
-async function getPendingCount() {
-  if (!pool) return;
+function getPendingCount() {
   try {
-    const result = await pool.query('SELECT COUNT(*) FROM transactions WHERE is_synced = FALSE');
-    syncStatus.pendingTransactions = parseInt(result.rows[0].count);
+    const Database = require('better-sqlite3');
+    const dbPath = process.env.SQLITE_PATH;
+    if (!dbPath) return;
+
+    const db = new Database(dbPath, { readonly: true });
+    const result = db.prepare('SELECT COUNT(*) as count FROM transactions WHERE is_synced = 0').get();
+    syncStatus.pendingTransactions = parseInt(result.count);
     mainWindow?.webContents.send('sync-status-updated', syncStatus);
+    db.close();
   } catch (e) {
     console.error('Error fetching pending count:', e);
   }
@@ -54,7 +68,7 @@ async function getPendingCount() {
 
 function createWindow() {
   const isDev = process.env.NODE_ENV === 'development';
-  
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -86,12 +100,12 @@ function createWindow() {
 
     const isReload = input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r') || (input.meta && input.key.toLowerCase() === 'r');
     const isDevTools = (input.control && input.shift && input.key.toLowerCase() === 'i') || input.key === 'F12';
-    
+
     if (isReload) {
       event.preventDefault();
       mainWindow.webContents.send('request-reload-auth');
     }
-    
+
     if (isDevTools) {
       event.preventDefault();
     }
@@ -100,23 +114,6 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
-}
-
-function ensureDocker() {
-  try {
-    execSync('docker info');
-    exec('docker-compose up -d', (error) => {
-      if (!error) {
-        initDb();
-        getPendingCount();
-      }
-    });
-  } catch (e) {
-    if (process.env.NODE_ENV !== 'development') {
-      dialog.showErrorBox('Docker Not Found', 'Please ensure Docker is running.');
-      app.quit();
-    }
-  }
 }
 
 // IPC Handlers
@@ -157,8 +154,9 @@ ipcMain.handle('save-terminal-id', (event, id) => {
 });
 
 app.on('ready', () => {
-  ensureDocker();
+  initSqlite();
   createWindow();
+  getPendingCount();
 
   // Emergency Exit Shortcut: Shift + 0 + U
   globalShortcut.register('Shift+0+U', () => {

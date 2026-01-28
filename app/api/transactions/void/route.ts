@@ -1,5 +1,6 @@
 
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { queryOne, transaction, getPosId } from "@/lib/db"
 import { dataUrlToBase64 } from "@/lib/audit-service"
 import * as bcrypt from "bcrypt"
@@ -101,14 +102,15 @@ export async function POST(request: Request) {
 
       const reversalTx = await client.query(
         `INSERT INTO transactions (
-          invoice_number, pos_id,
+          id, invoice_number, pos_id,
           gross_sales, vatable_sales, vat_amount, vat_exempt_sales, zero_rated_sales, total_discount, net_sales,
           pax_count, senior_count, sc_pwd_id, sc_pwd_name,
           payment_method, amount_tendered, change_amount, reference_number,
           status, void_reason, void_authorized_by, voided_at, transaction_type
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, CURRENT_TIMESTAMP, 'VOID_REFUND')
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, CURRENT_TIMESTAMP, 'VOID_REFUND')
         RETURNING *`,
         [
+          crypto.randomUUID(),
           invoiceNumber, posId,
           -originalTx.gross_sales,
           -originalTx.vatable_sales,
@@ -148,21 +150,22 @@ export async function POST(request: Request) {
 
       await client.query(
         `INSERT INTO audit_logs (
-           action_type, 
-           user_id, 
-           shift_id, -- We need the current shift ID? 
-           audit_image, 
+           id, action_type,
+           user_id,
+           shift_id,
+           audit_image,
            audit_metadata
-         ) VALUES ($1, $2, $3, $4, $5)`,
+         ) VALUES ($1, $2, $3, $4, $5, $6)`,
         [
+            crypto.randomUUID(),
             'TRANSACTION_VOID',
             managerId,
-            null, // TODO: Need current shift ID. 
+            null,
             imageBuffer,
-            JSON.stringify({ 
-                original_invoice: originalTx.invoice_number, 
+            JSON.stringify({
+                original_invoice: originalTx.invoice_number,
                 reversal_invoice: invoiceNumber,
-                reason 
+                reason
             })
         ]
       )
