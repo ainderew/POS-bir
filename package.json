@@ -26,7 +26,9 @@
       "electron/**/*",
       "public/**/*",
       ".next/standalone/**/*",
-      ".next/static/**/*"
+      ".next/static/**/*",
+      "!**/node_modules/@img",
+      "!**/node_modules/sharp"
     ],
     "extraResources": [
       {
@@ -144,8 +146,7 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "electron",
-      "electron-winstaller",
-      "sharp"
+      "electron-winstaller"
     ]
   }
 }
