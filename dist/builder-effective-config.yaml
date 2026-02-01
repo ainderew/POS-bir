@@ -9,6 +9,9 @@ files:
       - public/**/*
       - .next/standalone/**/*
       - .next/static/**/*
+extraResources:
+  - from: scripts/sqlite_schema.sql
+    to: scripts/sqlite_schema.sql
 mac:
   category: public.app-category.business
   target: dmg

@@ -41,7 +41,9 @@ function initSqlite() {
   // Run schema if tables don't exist
   const tableCheck = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").get();
   if (!tableCheck) {
-    const schemaPath = path.join(__dirname, '../scripts/sqlite_schema.sql');
+    const schemaPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'scripts/sqlite_schema.sql')
+      : path.join(__dirname, '../scripts/sqlite_schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf-8');
     db.exec(schema);
     console.log('[POS] Database initialized at:', dbPath);
