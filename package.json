@@ -38,6 +38,7 @@
         "to": "standalone",
         "filter": [
           "**/*",
+          "!.next/node_modules/**",
           "!**/node_modules/@img/**",
           "!**/node_modules/sharp/**"
         ]
