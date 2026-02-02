@@ -17,6 +17,12 @@ const storeReady = (async () => {
   }
 })();
 
+// Single instance lock — quit if another instance is already running
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+}
+
 let mainWindow;
 let canQuit = false;
 
@@ -215,6 +221,13 @@ ipcMain.handle('save-terminal-id', async (event, id) => {
     return true;
   }
   return false;
+});
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
 });
 
 app.on('ready', async () => {

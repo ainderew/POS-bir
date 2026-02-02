@@ -63,6 +63,10 @@
     "win": {
       "target": "nsis"
     },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
     "linux": {
       "target": "AppImage"
     }
