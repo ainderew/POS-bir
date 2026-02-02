@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProductForm } from "@/components/inventory/product-form"
 import { InventoryTable } from "@/components/inventory/inventory-table"
-import { Plus, Search, Package, AlertTriangle, ArrowLeft } from "lucide-react"
+import { Plus, Search, Package, AlertTriangle, ArrowLeft, Download, Upload } from "lucide-react"
 import Link from "next/link"
 import type { Product, Category } from "@/lib/types"
 import { toast } from "sonner"
@@ -33,6 +33,7 @@ export default function InventoryPage() {
   } = useInventoryStore()
 
   const [activeTab, setActiveTab] = useState("all")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchProducts()
@@ -97,6 +98,58 @@ export default function InventoryPage() {
     fetchProducts(searchTerm, activeTab === "low-stock")
   }
 
+  const handleExportCsv = async () => {
+    try {
+      const res = await fetch("/api/products/export")
+      if (!res.ok) throw new Error("Export failed")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `products_${new Date().toISOString().split("T")[0]}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Products exported successfully")
+    } catch {
+      toast.error("Failed to export products")
+    }
+  }
+
+  const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/products/import", { method: "POST", body: formData })
+      const result = await res.json()
+
+      if (!res.ok) {
+        toast.error(result.error || "Import failed")
+        return
+      }
+
+      const parts = []
+      if (result.created > 0) parts.push(`${result.created} created`)
+      if (result.updated > 0) parts.push(`${result.updated} updated`)
+      if (result.skipped > 0) parts.push(`${result.skipped} skipped`)
+      toast.success(`Import complete: ${parts.join(", ")}`)
+
+      if (result.errors?.length > 0) {
+        toast.warning(`${result.errors.length} row(s) had errors`)
+      }
+
+      fetchProducts(searchTerm, activeTab === "low-stock")
+      fetchCategories()
+    } catch {
+      toast.error("Failed to import products")
+    }
+
+    // Reset file input so the same file can be re-imported
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
   const noStockCount = products.filter((p) => Number(p.stock_level) <= 0).length
   const lowStockCount = products.filter((p) => Number(p.stock_level) > 0 && p.is_low_stock).length
 
@@ -115,10 +168,27 @@ export default function InventoryPage() {
               <p className="text-muted-foreground mt-2">Manage your store products and stock levels</p>
             </div>
           </div>
-          <Button onClick={handleAddProduct} size="lg">
-            <Plus className="h-5 w-5 mr-2" />
-            Add Product
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleExportCsv}>
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import CSV
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleImportCsv}
+            />
+            <Button onClick={handleAddProduct} size="lg">
+              <Plus className="h-5 w-5 mr-2" />
+              Add Product
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

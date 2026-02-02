@@ -10,9 +10,9 @@
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
     "start": "next start",
-    "electron:dev": "concurrently \"pnpm run dev\" \"wait-on http://localhost:3000 && electron electron/main.js\"",
-    "electron:build": "pnpm run build && electron-builder",
-    "electron:build:win": "pnpm run build && electron-builder --win",
+    "electron:dev": "electron electron/main.js",
+    "electron:build": "pnpm run build && cp -r .next/static .next/standalone/.next/static && electron-builder",
+    "electron:build:win": "pnpm run build && cp -r .next/static .next/standalone/.next/static && electron-builder --win",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "main": "electron/main.js",
