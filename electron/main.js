@@ -80,14 +80,14 @@ function startNextServer() {
       const nextBin = require.resolve('next/dist/bin/next');
       serverArgs = [nextBin, 'dev', '--port', '3000'];
     } else {
-      const serverPath = path.join(process.resourcesPath, '.next/standalone/server.js');
+      const serverPath = path.join(process.resourcesPath, 'standalone/server.js');
       env.PORT = '3000';
       env.HOSTNAME = '0.0.0.0';
       serverArgs = [serverPath];
     }
 
     nextServerProcess = spawn(process.execPath, serverArgs, {
-      cwd: isDev ? path.join(__dirname, '..') : path.join(process.resourcesPath, '.next/standalone'),
+      cwd: isDev ? path.join(__dirname, '..') : path.join(process.resourcesPath, 'standalone'),
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });

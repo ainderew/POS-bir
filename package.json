@@ -11,8 +11,8 @@
     "test:e2e": "playwright test",
     "start": "next start",
     "electron:dev": "electron electron/main.js",
-    "electron:build": "pnpm run build && cp -r .next/static .next/standalone/.next/static && electron-builder",
-    "electron:build:win": "pnpm run build && cp -r .next/static .next/standalone/.next/static && electron-builder --win",
+    "electron:build": "pnpm run build && electron-builder",
+    "electron:build:win": "pnpm run build && electron-builder --win",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "main": "electron/main.js",
@@ -25,16 +25,14 @@
     "files": [
       "electron/**/*",
       "public/**/*",
-      ".next/standalone/**/*",
-      ".next/static/**/*",
       "!**/node_modules/@img",
       "!**/node_modules/sharp"
     ],
     "extraResources": [
-      {
-        "from": "scripts/sqlite_schema.sql",
-        "to": "scripts/sqlite_schema.sql"
-      }
+      { "from": "scripts/sqlite_schema.sql", "to": "scripts/sqlite_schema.sql" },
+      { "from": ".next/standalone", "to": "standalone" },
+      { "from": ".next/static", "to": "standalone/.next/static" },
+      { "from": "public", "to": "standalone/public" }
     ],
     "mac": {
       "category": "public.app-category.business",
