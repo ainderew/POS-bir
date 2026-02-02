@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import bcrypt from "bcrypt"
+import bcrypt from "bcryptjs"
 import crypto from "crypto"
 import { queryOne, transaction } from "@/lib/db"
 

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import crypto from "crypto"
 import { queryOne, transaction } from "@/lib/db"
 import { dataUrlToBase64 } from "@/lib/audit-service"
-import * as bcrypt from "bcrypt"
+import bcrypt from "bcryptjs"
 
 export async function POST(request: Request) {
   try {

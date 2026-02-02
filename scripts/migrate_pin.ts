@@ -1,6 +1,6 @@
 
 import { Pool } from 'pg';
-import * as bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import * as dotenv from 'dotenv';
 import path from 'path';
 

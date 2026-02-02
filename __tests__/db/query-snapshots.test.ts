@@ -11,7 +11,7 @@
 import { query, queryOne, transaction, closeDb } from "@/lib/db"
 import { ensureSchema } from "./_setup"
 import crypto from "crypto"
-import * as bcrypt from "bcrypt"
+import bcrypt from "bcryptjs"
 
 jest.setTimeout(30000)
 
