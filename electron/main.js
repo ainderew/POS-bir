@@ -4,6 +4,14 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+// File-based logging for production debugging
+const logFile = path.join(app.getPath('userData'), 'pos-debug.log');
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  console.log(msg);
+  fs.appendFileSync(logFile, line);
+}
+
 let store;
 let nextServerProcess = null;
 
@@ -77,46 +85,55 @@ function getPendingCount() {
 // Start Next.js server using Electron's Node.js runtime
 function startNextServer() {
   const isDev = !app.isPackaged;
+  log(`startNextServer called, isDev=${isDev}, resourcesPath=${process.resourcesPath}`);
 
   return new Promise((resolve, reject) => {
     const env = { ...process.env };
     let serverArgs;
+    let cwd;
 
     if (isDev) {
       const nextBin = require.resolve('next/dist/bin/next');
       serverArgs = [nextBin, 'dev', '--port', '3000'];
+      cwd = path.join(__dirname, '..');
     } else {
       const serverPath = path.join(process.resourcesPath, 'standalone/server.js');
+      log(`Production server path: ${serverPath}`);
+      log(`Server exists: ${fs.existsSync(serverPath)}`);
       env.PORT = '3000';
       env.HOSTNAME = '0.0.0.0';
       serverArgs = [serverPath];
+      cwd = path.join(process.resourcesPath, 'standalone');
+      log(`CWD: ${cwd}, exists: ${fs.existsSync(cwd)}`);
     }
 
+    log(`Spawning: ${process.execPath} ${serverArgs.join(' ')}`);
     nextServerProcess = spawn(process.execPath, serverArgs, {
-      cwd: isDev ? path.join(__dirname, '..') : path.join(process.resourcesPath, 'standalone'),
+      cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     nextServerProcess.stdout.on('data', (data) => {
       const output = data.toString();
-      console.log('[Next.js]', output.trim());
+      log('[Next.js stdout] ' + output.trim());
       if (output.includes('Ready') || output.includes('Listening') || output.includes('started server')) {
+        log('Server ready signal detected');
         resolve();
       }
     });
 
     nextServerProcess.stderr.on('data', (data) => {
-      console.error('[Next.js]', data.toString().trim());
+      log('[Next.js stderr] ' + data.toString().trim());
     });
 
     nextServerProcess.on('error', (err) => {
-      console.error('[Next.js] Failed to start:', err);
+      log('[Next.js] Failed to start: ' + err.message);
       reject(err);
     });
 
     nextServerProcess.on('exit', (code) => {
-      console.log(`[Next.js] exited with code ${code}`);
+      log(`[Next.js] exited with code ${code}`);
       nextServerProcess = null;
     });
 
@@ -145,7 +162,16 @@ function createWindow() {
   // Go to /pos if terminal is registered, otherwise go to home for setup
   const terminalId = store ? store.get('terminalId', null) : null;
   const startPath = terminalId ? '/pos' : '/';
-  mainWindow.loadURL(`http://localhost:3000${startPath}`);
+  const url = `http://localhost:3000${startPath}`;
+  log(`Loading URL: ${url}, terminalId=${terminalId}`);
+  mainWindow.loadURL(url);
+
+  // Temporarily open devTools for debugging white screen
+  mainWindow.webContents.openDevTools();
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    log(`Page failed to load: ${errorCode} - ${errorDescription}`);
+  });
 
   // Clear stale localStorage terminal ID if electron-store has none
   if (!terminalId) {
@@ -231,19 +257,27 @@ app.on('second-instance', () => {
 });
 
 app.on('ready', async () => {
+  log('App ready, isPackaged=' + app.isPackaged);
+  log('userData path: ' + app.getPath('userData'));
   await storeReady;
+  log('Store ready');
   initSqlite();
+  log('SQLite initialized');
 
   try {
+    log('Starting Next.js server...');
     await startNextServer();
+    log('Next.js server started successfully');
   } catch (err) {
-    console.error('Failed to start Next.js server:', err);
+    log('Failed to start Next.js server: ' + err.message);
     dialog.showErrorBox('Startup Error', 'Failed to start the application server.');
     app.quit();
     return;
   }
 
+  log('Creating window...');
   createWindow();
+  log('Window created');
   getPendingCount();
 
   // Emergency Exit Shortcut: Shift + 0 + U
