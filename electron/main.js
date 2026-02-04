@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electro
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // File-based logging for production debugging
@@ -82,63 +83,108 @@ function getPendingCount() {
   }
 }
 
-// Start Next.js server using Electron's Node.js runtime
+// Helper to wait for a port to be available
+function waitForPort(port, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    function tryConnect() {
+      const socket = new net.Socket();
+      socket.setTimeout(1000);
+      socket.on('connect', () => {
+        socket.destroy();
+        log(`Port ${port} is ready`);
+        resolve();
+      });
+      socket.on('error', () => {
+        socket.destroy();
+        if (Date.now() - start > timeout) {
+          reject(new Error(`Timeout waiting for port ${port}`));
+        } else {
+          setTimeout(tryConnect, 100);
+        }
+      });
+      socket.on('timeout', () => {
+        socket.destroy();
+        setTimeout(tryConnect, 100);
+      });
+      socket.connect(port, 'localhost');
+    }
+    tryConnect();
+  });
+}
+
+// Start Next.js server
 function startNextServer() {
   const isDev = !app.isPackaged;
   log(`startNextServer called, isDev=${isDev}, resourcesPath=${process.resourcesPath}`);
 
   return new Promise((resolve, reject) => {
-    const env = { ...process.env };
-    let serverArgs;
-    let cwd;
-
     if (isDev) {
+      // Development: spawn next dev
       const nextBin = require.resolve('next/dist/bin/next');
-      serverArgs = [nextBin, 'dev', '--port', '3000'];
-      cwd = path.join(__dirname, '..');
+      const cwd = path.join(__dirname, '..');
+      log(`Dev mode: spawning next dev`);
+
+      nextServerProcess = spawn(process.execPath, [nextBin, 'dev', '--port', '3000'], {
+        cwd,
+        env: process.env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      nextServerProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        log('[Next.js stdout] ' + output.trim());
+        if (output.includes('Ready') || output.includes('Listening') || output.includes('started server')) {
+          log('Server ready signal detected');
+          resolve();
+        }
+      });
+
+      nextServerProcess.stderr.on('data', (data) => {
+        log('[Next.js stderr] ' + data.toString().trim());
+      });
+
+      nextServerProcess.on('error', (err) => {
+        log('[Next.js] Failed to start: ' + err.message);
+        reject(err);
+      });
+
+      nextServerProcess.on('exit', (code) => {
+        log(`[Next.js] exited with code ${code}`);
+        nextServerProcess = null;
+      });
+
+      // Timeout fallback for dev mode
+      setTimeout(() => resolve(), 30000);
     } else {
-      const serverPath = path.join(process.resourcesPath, 'standalone/server.js');
-      log(`Production server path: ${serverPath}`);
-      log(`Server exists: ${fs.existsSync(serverPath)}`);
-      env.PORT = '3000';
-      env.HOSTNAME = '0.0.0.0';
-      serverArgs = [serverPath];
-      cwd = path.join(process.resourcesPath, 'standalone');
-      log(`CWD: ${cwd}, exists: ${fs.existsSync(cwd)}`);
-    }
+      // Production: require the server directly (Electron IS Node.js)
+      const standaloneDir = path.join(process.resourcesPath, 'standalone');
+      const serverPath = path.join(standaloneDir, 'server.js');
 
-    log(`Spawning: ${process.execPath} ${serverArgs.join(' ')}`);
-    nextServerProcess = spawn(process.execPath, serverArgs, {
-      cwd,
-      env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+      log(`Production mode: requiring server directly`);
+      log(`Server path: ${serverPath}, exists: ${fs.existsSync(serverPath)}`);
+      log(`Standalone dir: ${standaloneDir}, exists: ${fs.existsSync(standaloneDir)}`);
 
-    nextServerProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      log('[Next.js stdout] ' + output.trim());
-      if (output.includes('Ready') || output.includes('Listening') || output.includes('started server')) {
-        log('Server ready signal detected');
-        resolve();
+      // Set up environment
+      process.env.PORT = '3000';
+      process.env.HOSTNAME = '0.0.0.0';
+
+      // Change to standalone directory so relative imports work
+      process.chdir(standaloneDir);
+      log(`Changed CWD to: ${process.cwd()}`);
+
+      // Require the server - it will start listening
+      try {
+        require(serverPath);
+        log('Server module loaded, waiting for port...');
+
+        // Wait for the server to be ready
+        waitForPort(3000, 15000).then(resolve).catch(reject);
+      } catch (err) {
+        log('Failed to require server: ' + err.message);
+        reject(err);
       }
-    });
-
-    nextServerProcess.stderr.on('data', (data) => {
-      log('[Next.js stderr] ' + data.toString().trim());
-    });
-
-    nextServerProcess.on('error', (err) => {
-      log('[Next.js] Failed to start: ' + err.message);
-      reject(err);
-    });
-
-    nextServerProcess.on('exit', (code) => {
-      log(`[Next.js] exited with code ${code}`);
-      nextServerProcess = null;
-    });
-
-    // Timeout fallback: resolve after 30s even if no ready signal
-    setTimeout(() => resolve(), 30000);
+    }
   });
 }
 
