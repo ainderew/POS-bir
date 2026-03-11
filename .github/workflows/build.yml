@@ -31,7 +31,7 @@ jobs:
           version: 9
 
       - name: Install Dependencies
-        run: pnpm install --shamefully-hoist
+        run: pnpm install
 
       - name: Build Next.js
         run: pnpm run build
