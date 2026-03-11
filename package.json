@@ -25,9 +25,8 @@
     "files": [
       "electron/**/*",
       "public/**/*",
-      "node_modules/**/*",
-      "!**/node_modules/@img/**",
-      "!**/node_modules/sharp/**"
+      "!**/node_modules/@img",
+      "!**/node_modules/sharp"
     ],
     "extraResources": [
       {
@@ -40,7 +39,9 @@
         "filter": [
           "**/*",
           "!**/node_modules/@img/**",
-          "!**/node_modules/sharp/**"
+          "!**/node_modules/sharp/**",
+          "!**/node_modules/better-sqlite3*/**",
+          "!**/node_modules/.pnpm/**/better-sqlite3/**"
         ]
       },
       {

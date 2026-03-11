@@ -31,9 +31,15 @@ jobs:
           version: 9
 
       - name: Install Dependencies
-        run: pnpm install
+        run: pnpm install --shamefully-hoist
+
+      - name: Build Next.js
+        run: pnpm run build
+
+      - name: Rebuild native modules for Electron
+        run: pnpm exec electron-rebuild -f -w better-sqlite3
 
       - name: Build & Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm run electron:build --publish always
+        run: pnpm exec electron-builder --publish always
