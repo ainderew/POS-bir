@@ -36,6 +36,15 @@ jobs:
       - name: Build Next.js
         run: pnpm run build
 
+      - name: Clean broken symlinks from standalone output
+        shell: bash
+        run: |
+          # Remove any broken symlinks/pnpm store references in standalone
+          find .next/standalone -xtype l -delete 2>/dev/null || true
+          # Remove better-sqlite3 from standalone (provided by electron-builder)
+          rm -rf .next/standalone/.next/node_modules/better-sqlite3* 2>/dev/null || true
+          rm -rf .next/standalone/node_modules/better-sqlite3* 2>/dev/null || true
+
       - name: Rebuild native modules for Electron
         run: pnpm exec electron-rebuild -f -w better-sqlite3
 
