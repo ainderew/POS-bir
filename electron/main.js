@@ -7,6 +7,17 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // File-based logging for production debugging
 const logFile = path.join(app.getPath('userData'), 'pos-debug.log');
+const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB
+
+// Rotate log on startup if too large
+try {
+  if (fs.existsSync(logFile) && fs.statSync(logFile).size > MAX_LOG_SIZE) {
+    const backup = logFile + '.old';
+    if (fs.existsSync(backup)) fs.unlinkSync(backup);
+    fs.renameSync(logFile, backup);
+  }
+} catch {}
+
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   console.log(msg);
@@ -27,9 +38,13 @@ const storeReady = (async () => {
 })();
 
 // Single instance lock — quit if another instance is already running
+// Consistent isDev check used throughout the app
+const isDev = !app.isPackaged;
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
+  process.exit(0);
 }
 
 let mainWindow;
@@ -105,7 +120,11 @@ function waitForPort(port, timeout = 10000) {
       });
       socket.on('timeout', () => {
         socket.destroy();
-        setTimeout(tryConnect, 100);
+        if (Date.now() - start > timeout) {
+          reject(new Error(`Timeout waiting for port ${port}`));
+        } else {
+          setTimeout(tryConnect, 100);
+        }
       });
       socket.connect(port, 'localhost');
     }
@@ -115,7 +134,6 @@ function waitForPort(port, timeout = 10000) {
 
 // Start Next.js server
 function startNextServer() {
-  const isDev = !app.isPackaged;
   log(`startNextServer called, isDev=${isDev}, resourcesPath=${process.resourcesPath}`);
 
   return new Promise((resolve, reject) => {
@@ -149,13 +167,17 @@ function startNextServer() {
         reject(err);
       });
 
+      // Timeout fallback for dev mode
+      const devTimeout = setTimeout(() => {
+        log('Dev server timeout fallback — resolving after 30s');
+        resolve();
+      }, 30000);
+
       nextServerProcess.on('exit', (code) => {
         log(`[Next.js] exited with code ${code}`);
         nextServerProcess = null;
+        clearTimeout(devTimeout);
       });
-
-      // Timeout fallback for dev mode
-      setTimeout(() => resolve(), 30000);
     } else {
       // Production: require the server directly (Electron IS Node.js)
       const standaloneDir = path.join(process.resourcesPath, 'standalone');
@@ -167,7 +189,7 @@ function startNextServer() {
 
       // Set up environment
       process.env.PORT = '3000';
-      process.env.HOSTNAME = '0.0.0.0';
+      process.env.HOSTNAME = '127.0.0.1';
 
       // Change to standalone directory so relative imports work
       process.chdir(standaloneDir);
@@ -189,8 +211,6 @@ function startNextServer() {
 }
 
 function createWindow() {
-  const isDev = process.env.NODE_ENV === 'development';
-
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -202,6 +222,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
     },
   });
 
@@ -212,8 +234,9 @@ function createWindow() {
   log(`Loading URL: ${url}, terminalId=${terminalId}`);
   mainWindow.loadURL(url);
 
-  // Temporarily open devTools for debugging white screen
-  mainWindow.webContents.openDevTools();
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
+  }
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     log(`Page failed to load: ${errorCode} - ${errorDescription}`);
@@ -260,7 +283,7 @@ function createWindow() {
 ipcMain.handle('set-kiosk', (event, flag) => {
   if (mainWindow) {
     mainWindow.setKiosk(flag);
-    mainWindow.setFullScreen(true); // Always maintain full screen even if kiosk is exited
+    mainWindow.setFullScreen(flag);
     mainWindow.setAlwaysOnTop(flag);
   }
 });
@@ -287,6 +310,7 @@ ipcMain.handle('get-terminal-id', async () => {
 });
 
 ipcMain.handle('save-terminal-id', async (event, id) => {
+  if (typeof id !== 'string' || id.length > 256) return false;
   await storeReady;
   if (store) {
     store.set('terminalId', id);
@@ -326,15 +350,25 @@ app.on('ready', async () => {
   log('Window created');
   getPendingCount();
 
-  // Emergency Exit Shortcut: Shift + 0 + U
-  globalShortcut.register('Shift+0+U', () => {
+  // Emergency Exit Shortcut
+  const registered = globalShortcut.register('CommandOrControl+Shift+U', () => {
     if (mainWindow) {
       mainWindow.webContents.send('trigger-emergency-exit');
     }
   });
+  if (!registered) {
+    log('WARNING: Emergency exit shortcut failed to register');
+  }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  if (!canQuit && !isDev) {
+    e.preventDefault();
+    if (mainWindow) {
+      mainWindow.webContents.send('request-quit-auth');
+    }
+    return;
+  }
   if (nextServerProcess) {
     nextServerProcess.kill();
     nextServerProcess = null;

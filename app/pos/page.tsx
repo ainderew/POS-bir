@@ -50,7 +50,7 @@ export default function POSPage() {
 
   // Security State
   const [isManagerAuthOpen, setIsManagerAuthOpen] = useState(false)
-  const [managerAuthMode, setManagerAuthMode] = useState<"EXIT" | "RELOAD" | "QUIT" | "OVERRIDE">("EXIT")
+  const [managerAuthMode, setManagerAuthMode] = useState<"RELOAD" | "QUIT" | "OVERRIDE">("QUIT")
 
   // SC/PWD State
   const [isSCPWDModalOpen, setIsSCPWDModalOpen] = useState(false)
@@ -58,34 +58,37 @@ export default function POSPage() {
 
   useEffect(() => {
     checkActiveShift()
-    
+
     // Lock in Kiosk Mode
-    if (window.electronAPI) {
-      window.electronAPI.setKiosk(true)
+    if (!window.electronAPI) return
 
-      // Register Security Listeners
-      window.electronAPI.onRequestQuit(() => {
-        setManagerAuthMode("QUIT")
-        setIsManagerAuthOpen(true)
-      })
+    window.electronAPI.setKiosk(true)
 
-      window.electronAPI.onRequestReload(() => {
-        setManagerAuthMode("RELOAD")
-        setIsManagerAuthOpen(true)
-      })
+    // Register Security Listeners (store cleanup functions)
+    const offQuit = window.electronAPI.onRequestQuit(() => {
+      setManagerAuthMode("QUIT")
+      setIsManagerAuthOpen(true)
+    })
 
-      window.electronAPI.onEmergencyExit(() => {
-        setManagerAuthMode("OVERRIDE")
-        setIsManagerAuthOpen(true)
-      })
+    const offReload = window.electronAPI.onRequestReload(() => {
+      setManagerAuthMode("RELOAD")
+      setIsManagerAuthOpen(true)
+    })
+
+    const offEmergency = window.electronAPI.onEmergencyExit(() => {
+      setManagerAuthMode("OVERRIDE")
+      setIsManagerAuthOpen(true)
+    })
+
+    return () => {
+      offQuit()
+      offReload()
+      offEmergency()
     }
   }, [])
 
   const handleManagerSuccess = async () => {
-    if (managerAuthMode === "EXIT") {
-      if (window.electronAPI) await window.electronAPI.setKiosk(false)
-      router.push("/")
-    } else if (managerAuthMode === "RELOAD") {
+    if (managerAuthMode === "RELOAD") {
       if (window.electronAPI) await window.electronAPI.reloadApp()
     } else if (managerAuthMode === "QUIT") {
       if (window.electronAPI) await window.electronAPI.forceQuit()
@@ -434,13 +437,11 @@ export default function POSPage() {
         onClose={() => setIsManagerAuthOpen(false)}
         onAuthenticated={handleManagerSuccess}
         title={
-          managerAuthMode === "EXIT" ? "Exit POS Authorization" :
           managerAuthMode === "RELOAD" ? "Reload POS Authorization" :
           managerAuthMode === "QUIT" ? "System Shutdown Authorization" :
           "Manager System Override"
         }
         description={
-          managerAuthMode === "EXIT" ? "Enter Manager PIN to access Dashboard and Inventory." :
           managerAuthMode === "RELOAD" ? "Enter Manager PIN to refresh the application." :
           managerAuthMode === "QUIT" ? "Enter Manager PIN to safely close the POS system." :
           "Enter Manager PIN to unlock the system and access the main menu."

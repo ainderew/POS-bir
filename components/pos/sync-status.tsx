@@ -29,15 +29,17 @@ export function SyncStatus() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   useEffect(() => {
-    // Initial fetch
-    if (window.electronAPI) {
-      window.electronAPI.getSyncStatus().then(setStatus)
+    if (!window.electronAPI) return
 
-      // Listen for updates
-      window.electronAPI.onSyncStatusUpdate((newStatus: any) => {
-        setStatus(newStatus)
-      })
-    }
+    // Initial fetch
+    window.electronAPI.getSyncStatus().then(setStatus)
+
+    // Listen for updates (store cleanup function)
+    const off = window.electronAPI.onSyncStatusUpdate((newStatus: any) => {
+      setStatus(newStatus)
+    })
+
+    return off
   }, [])
 
   const isWarning = status.pendingTransactions > 0 || !status.connected

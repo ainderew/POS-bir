@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
+import bcrypt from "bcryptjs"
 import { queryOne, transaction, getPosId } from "@/lib/db"
 
 export async function GET() {
@@ -34,9 +35,17 @@ export async function POST(request: Request) {
     const { pin } = await request.json()
     const posId = getPosId()
 
-    // 1. Verify PIN
+    // 1. Verify PIN (supports both legacy plaintext and bcrypt hashed)
     const settings = await queryOne("SELECT value FROM settings WHERE key = 'manager_pin'")
-    if (!settings || settings.value !== pin) {
+    if (!settings) {
+      return NextResponse.json({ error: "Manager PIN not configured" }, { status: 401 })
+    }
+    const storedPin = settings.value
+    const isHashed = storedPin.startsWith("$2a$") || storedPin.startsWith("$2b$")
+    const pinValid = isHashed
+      ? await bcrypt.compare(pin, storedPin)
+      : storedPin === pin
+    if (!pinValid) {
       return NextResponse.json({ error: "Invalid Manager PIN" }, { status: 401 })
     }
 

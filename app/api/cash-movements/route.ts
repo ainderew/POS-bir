@@ -10,6 +10,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing movement details" }, { status: 400 })
     }
 
+    const VALID_TYPES = ["CASH_IN", "CASH_OUT", "SAFE_DROP"]
+    if (!VALID_TYPES.includes(type)) {
+      return NextResponse.json({ error: "Invalid movement type" }, { status: 400 })
+    }
+
     const movement = await queryOne(
       `INSERT INTO cash_movements (id, shift_id, type, amount, reason)
        VALUES ($1, $2, $3, $4, $5)

@@ -9,17 +9,22 @@ export async function PATCH(
     const { id } = await params
     const { adjustment, reason } = await request.json()
     
-    // 1. Update Product Stock
+    // 1. Update Product Stock (prevent negative stock)
     const updateRes = await query(
-        `UPDATE products 
-         SET stock_level = stock_level + $1, updated_at = NOW() 
-         WHERE id = $2 
+        `UPDATE products
+         SET stock_level = stock_level + $1, updated_at = NOW()
+         WHERE id = $2 AND stock_level + $1 >= 0
          RETURNING *`,
         [adjustment, id]
     )
-    
+
     if (updateRes.length === 0) {
-        return NextResponse.json({ error: "Product not found" }, { status: 404 })
+        // Check if product exists to give better error
+        const existing = await query("SELECT id, stock_level FROM products WHERE id = $1", [id])
+        if (existing.length === 0) {
+          return NextResponse.json({ error: "Product not found" }, { status: 404 })
+        }
+        return NextResponse.json({ error: "Adjustment would result in negative stock" }, { status: 400 })
     }
 
     // 2. Log Inventory Movement (Audit Trail)

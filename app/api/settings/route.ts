@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import bcrypt from "bcryptjs"
 import { query, transaction } from "@/lib/db"
 
 export async function GET() {
@@ -27,6 +28,12 @@ export async function POST(request: Request) {
       auto_print
     } = body
 
+    // Hash manager PIN before storing (if provided)
+    let hashedPin: string | undefined
+    if (manager_pin !== undefined && manager_pin !== "") {
+      hashedPin = await bcrypt.hash(manager_pin.toString(), 10)
+    }
+
     await transaction(async (client) => {
       const updateSetting = async (key: string, value: string) => {
         if (value !== undefined) {
@@ -40,7 +47,7 @@ export async function POST(request: Request) {
       await updateSetting("business_name", business_name)
       await updateSetting("business_address", business_address)
       await updateSetting("business_tin", business_tin)
-      await updateSetting("manager_pin", manager_pin)
+      if (hashedPin) await updateSetting("manager_pin", hashedPin)
       await updateSetting("vat_rate", vat_rate)
       await updateSetting("auto_print", auto_print)
     })

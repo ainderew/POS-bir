@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     const endDate = searchParams.get("endDate")
 
     const params: any[] = []
-    const conditions: string[] = []
+    const conditions: string[] = ["t.status = 'PAID'"]
 
     if (startDate) {
       params.push(startDate)
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       conditions.push(`t.created_at <= $${params.length}::timestamp`)
     }
 
-    const whereClause = conditions.length > 0 ? " WHERE " + conditions.join(" AND ") : ""
+    const whereClause = " WHERE " + conditions.join(" AND ")
 
     // Get summary statistics
     const summaryQuery = `

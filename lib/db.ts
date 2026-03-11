@@ -140,41 +140,53 @@ export async function queryOne<T = any>(text: string, params?: any[]): Promise<T
   return rows.length > 0 ? rows[0] : null
 }
 
-// Transaction helper
+// Synchronous query helper for use inside transactions
+function clientQuery(database: Database.Database, text: string, params?: any[]) {
+  const { sql: converted, params: boundParams } = convertParams(text, params)
+
+  try {
+    if (isReturningQuery(converted)) {
+      const stmt = database.prepare(converted)
+      const rows = stmt.all(...boundParams)
+      return { rows }
+    } else {
+      const stmt = database.prepare(converted)
+      const info = stmt.run(...boundParams)
+      return { rows: [], changes: info.changes, lastInsertRowid: info.lastInsertRowid }
+    }
+  } catch (error: any) {
+    if (error.message?.includes("UNIQUE constraint failed")) {
+      error.code = "23505"
+    }
+    throw error
+  }
+}
+
+// Transaction helper using better-sqlite3's native transaction API.
+// IMPORTANT: The callback receives a synchronous client. Do all async work
+// (bcrypt, fetch, etc.) BEFORE calling transaction(), then pass results in.
+// If async work is needed inside, use transactionAsync() instead.
 export async function transaction<T>(callback: (client: any) => Promise<T>): Promise<T> {
   const database = getDb()
 
   // Create a client object that mimics pg's client.query interface
   const client = {
-    query: async (text: string, params?: any[]) => {
-      const { sql: converted, params: boundParams } = convertParams(text, params)
-
-      try {
-        if (isReturningQuery(converted)) {
-          const stmt = database.prepare(converted)
-          const rows = stmt.all(...boundParams)
-          return { rows }
-        } else {
-          const stmt = database.prepare(converted)
-          const info = stmt.run(...boundParams)
-          return { rows: [], changes: info.changes, lastInsertRowid: info.lastInsertRowid }
-        }
-      } catch (error: any) {
-        if (error.message?.includes("UNIQUE constraint failed")) {
-          error.code = "23505"
-        }
-        throw error
-      }
-    }
+    query: (text: string, params?: any[]) => clientQuery(database, text, params)
   }
 
+  // Manual BEGIN/COMMIT for backward compat with async callbacks.
+  // ROLLBACK is wrapped safely in case SQLite already auto-rolled-back.
   database.exec("BEGIN")
   try {
     const result = await callback(client)
     database.exec("COMMIT")
     return result
   } catch (error) {
-    database.exec("ROLLBACK")
+    try {
+      database.exec("ROLLBACK")
+    } catch {
+      // ROLLBACK may fail if SQLite already auto-rolled-back
+    }
     throw error
   }
 }

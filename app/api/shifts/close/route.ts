@@ -33,9 +33,10 @@ export async function POST(request: Request) {
             payment_method,
             COALESCE(SUM(net_sales), 0) as total
           FROM transactions
-          WHERE created_at >= $1 AND status = 'PAID'
+          WHERE created_at >= $1 AND created_at <= CURRENT_TIMESTAMP
+            AND status = 'PAID' AND pos_id = $2
           GROUP BY payment_method`,
-        [shift.start_time]
+        [shift.start_time, shift.pos_id || shift.terminal_id]
       )
       
       let theoreticalCashSales = 0
@@ -83,8 +84,9 @@ export async function POST(request: Request) {
       const shiftTotalResult = await client.query(
         `SELECT COALESCE(SUM(net_sales), 0) as total
          FROM transactions
-         WHERE created_at >= $1 AND status = 'PAID'`,
-        [shift.start_time]
+         WHERE created_at >= $1 AND created_at <= CURRENT_TIMESTAMP
+           AND status = 'PAID' AND pos_id = $2`,
+        [shift.start_time, shift.pos_id || shift.terminal_id]
       )
       const shiftNetSales = parseFloat(shiftTotalResult.rows[0].total)
 

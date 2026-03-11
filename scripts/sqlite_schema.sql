@@ -160,6 +160,8 @@ CREATE TABLE IF NOT EXISTS transactions (
 
 CREATE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_number);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
+CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_status_created ON transactions(status, created_at);
 
 -- 7. Transaction Items Table
 CREATE TABLE IF NOT EXISTS transaction_items (

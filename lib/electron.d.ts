@@ -6,17 +6,17 @@ export interface ElectronAPI {
     pendingTransactions: number;
     error: string | null;
   }>;
-  onSyncStatusUpdate: (callback: (status: any) => void) => void;
-  
+  onSyncStatusUpdate: (callback: (status: any) => void) => () => void;
+
   // Security & Kiosk
   setKiosk: (flag: boolean) => Promise<void>;
   forceQuit: () => Promise<void>;
   reloadApp: () => Promise<void>;
-  
-  // Listeners
-  onRequestQuit: (callback: () => void) => void;
-  onRequestReload: (callback: () => void) => void;
-  onEmergencyExit: (callback: () => void) => void;
+
+  // Listeners (return cleanup functions)
+  onRequestQuit: (callback: () => void) => () => void;
+  onRequestReload: (callback: () => void) => () => void;
+  onEmergencyExit: (callback: () => void) => () => void;
 
   // Terminal Config
   getTerminalId: () => Promise<string | null>;
