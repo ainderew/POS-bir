@@ -10,6 +10,9 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Exclude native modules from standalone bundle — they're provided
+  // by electron-builder's node_modules bundling (rebuilt for Electron ABI)
+  serverExternalPackages: ["better-sqlite3"],
 };
 
 export default nextConfig;
