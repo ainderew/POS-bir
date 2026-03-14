@@ -11,8 +11,8 @@
     "test:e2e": "playwright test",
     "start": "next start",
     "electron:dev": "electron electron/main.js",
-    "electron:build": "pnpm run build && electron-builder",
-    "electron:build:win": "pnpm run build && electron-builder --win",
+    "electron:build": "pnpm run build && node scripts/fix-standalone.js && electron-builder",
+    "electron:build:win": "pnpm run build && node scripts/fix-standalone.js && electron-builder --win",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "main": "electron/main.js",
@@ -39,7 +39,14 @@
         "filter": [
           "**/*",
           "!**/node_modules/@img/**",
-          "!**/node_modules/sharp/**"
+          "!**/node_modules/sharp/**",
+          "!**/node_modules/sharp",
+          "!**/node_modules/.pnpm/**/sharp/**",
+          "!**/node_modules/.pnpm/**/sharp",
+          "!**/node_modules/.pnpm/**/node_modules/sharp",
+          "!**/node_modules/.pnpm/**/node_modules/sharp/**",
+          "!**/node_modules/.pnpm/**/node_modules/@img",
+          "!**/node_modules/.pnpm/**/node_modules/@img/**"
         ]
       },
       {

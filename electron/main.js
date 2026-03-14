@@ -181,7 +181,32 @@ function startNextServer() {
     } else {
       // Production: require the server directly (Electron IS Node.js)
       const standaloneDir = path.join(process.resourcesPath, 'standalone');
-      const serverPath = path.join(standaloneDir, 'server.js');
+      let serverPath = path.join(standaloneDir, 'server.js');
+
+      if (!fs.existsSync(serverPath)) {
+        // Next.js standalone nests files under the project's filesystem path
+        const findFile = (dir, name, depth = 0) => {
+          if (depth > 5) return null;
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const e of entries) {
+            if (e.isFile() && e.name === name) return path.join(dir, e.name);
+          }
+          for (const e of entries) {
+            if (e.isDirectory() && e.name !== 'node_modules' && e.name !== '.next') {
+              const found = findFile(path.join(dir, e.name), name, depth + 1);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const found = findFile(standaloneDir, 'server.js');
+        if (found) {
+          log(`Found server.js at nested path: ${found}`);
+          serverPath = found;
+        }
+      }
+
+      const serverDir = path.dirname(serverPath);
 
       log(`Production mode: requiring server directly`);
       log(`Server path: ${serverPath}, exists: ${fs.existsSync(serverPath)}`);
@@ -191,8 +216,8 @@ function startNextServer() {
       process.env.PORT = '3000';
       process.env.HOSTNAME = '127.0.0.1';
 
-      // Change to standalone directory so relative imports work
-      process.chdir(standaloneDir);
+      // Change to directory containing server.js so relative imports work
+      process.chdir(serverDir);
       log(`Changed CWD to: ${process.cwd()}`);
 
       // Require the server - it will start listening
