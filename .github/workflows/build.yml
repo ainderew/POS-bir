@@ -36,6 +36,9 @@ jobs:
       - name: Build Next.js
         run: pnpm run build
 
+      - name: Resolve symlinks in standalone output
+        run: node scripts/resolve-standalone-symlinks.js
+
       - name: Clean broken symlinks from standalone output
         shell: bash
         run: |
