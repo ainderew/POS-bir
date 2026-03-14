@@ -212,6 +212,26 @@ function startNextServer() {
       log(`Server path: ${serverPath}, exists: ${fs.existsSync(serverPath)}`);
       log(`Standalone dir: ${standaloneDir}, exists: ${fs.existsSync(standaloneDir)}`);
 
+      // Diagnostic: log standalone directory contents (2 levels deep, skip node_modules)
+      const logDirContents = (dir, prefix = '', depth = 0) => {
+        if (depth > 2) return;
+        try {
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const e of entries) {
+            if (e.name === 'node_modules') continue;
+            const fullPath = path.join(dir, e.name);
+            log(`  ${prefix}${e.isDirectory() ? '[D]' : '[F]'} ${e.name}`);
+            if (e.isDirectory()) {
+              logDirContents(fullPath, prefix + '  ', depth + 1);
+            }
+          }
+        } catch (err) {
+          log(`  ${prefix}(error reading dir: ${err.message})`);
+        }
+      };
+      log('Standalone directory contents:');
+      logDirContents(standaloneDir);
+
       // Set up environment
       process.env.PORT = '3000';
       process.env.HOSTNAME = '127.0.0.1';
@@ -220,13 +240,23 @@ function startNextServer() {
       process.chdir(serverDir);
       log(`Changed CWD to: ${process.cwd()}`);
 
+      // Ensure NODE_PATH includes both the server dir and standalone root node_modules
+      const nodePaths = [
+        path.join(serverDir, 'node_modules'),
+        path.join(standaloneDir, 'node_modules'),
+      ].join(path.delimiter);
+      process.env.NODE_PATH = nodePaths;
+      require('module').Module._initPaths();
+      log(`NODE_PATH set to: ${nodePaths}`);
+
       // Require the server - it will start listening
       try {
         require(serverPath);
         log('Server module loaded, waiting for port...');
 
         // Wait for the server to be ready
-        waitForPort(3000, 15000).then(resolve).catch(reject);
+        const timeout = process.platform === 'win32' ? 45000 : 20000;
+        waitForPort(3000, timeout).then(resolve).catch(reject);
       } catch (err) {
         log('Failed to require server: ' + err.message);
         reject(err);
@@ -365,7 +395,10 @@ app.on('ready', async () => {
     log('Next.js server started successfully');
   } catch (err) {
     log('Failed to start Next.js server: ' + err.message);
-    dialog.showErrorBox('Startup Error', 'Failed to start the application server.');
+    dialog.showErrorBox(
+      'Startup Error',
+      `Failed to start the application server.\n\n${err.message}\n\nSee log file for details:\n${logFile}`
+    );
     app.quit();
     return;
   }

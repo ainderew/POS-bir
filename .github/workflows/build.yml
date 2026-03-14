@@ -45,6 +45,9 @@ jobs:
           rm -rf .next/standalone/.next/node_modules/better-sqlite3* 2>/dev/null || true
           rm -rf .next/standalone/node_modules/better-sqlite3* 2>/dev/null || true
 
+      - name: Fix standalone directory structure
+        run: node scripts/fix-standalone.js
+
       - name: Rebuild native modules for Electron
         run: pnpm exec electron-rebuild -f -w better-sqlite3
 

@@ -65,4 +65,26 @@ if (fs.existsSync(publicSrc) && !fs.existsSync(publicDest)) {
   console.log(`Copied public -> ${path.relative(projectRoot, publicDest)}`);
 }
 
-console.log('Standalone structure fixed successfully');
+// Validate that all required files/directories exist in the nested dir
+const requiredPaths = [
+  { path: nestedServerPath, label: 'server.js' },
+  { path: staticDest, label: '.next/static' },
+  { path: publicDest, label: 'public' },
+];
+
+let valid = true;
+for (const { path: p, label } of requiredPaths) {
+  if (fs.existsSync(p)) {
+    console.log(`  ✓ ${label} exists`);
+  } else {
+    console.error(`  ✗ ${label} is MISSING at ${p}`);
+    valid = false;
+  }
+}
+
+if (!valid) {
+  console.error('ERROR: Standalone validation failed — required files are missing');
+  process.exit(1);
+}
+
+console.log('Standalone structure fixed and validated successfully');
