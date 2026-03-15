@@ -52,13 +52,6 @@ function resolveSymlinks(dir) {
         continue;
       }
 
-      // Safety: target must be within the standalone directory
-      if (!realTarget.startsWith(standaloneDir + path.sep) && realTarget !== standaloneDir) {
-        console.log(`  Skipping symlink outside standalone: ${path.relative(standaloneDir, fullPath)} -> ${realTarget}`);
-        skipped++;
-        continue;
-      }
-
       // Remove the symlink
       fs.rmSync(fullPath);
 
