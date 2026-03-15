@@ -40,17 +40,41 @@ jobs:
       - name: Resolve symlinks in standalone output
         run: node scripts/resolve-standalone-symlinks.js
 
-      - name: Clean broken symlinks from standalone output
+      - name: Clean standalone output for packaging
         shell: bash
         run: |
-          # Remove any broken symlinks/pnpm store references in standalone
+          # Remove broken symlinks
           find .next/standalone -xtype l -delete 2>/dev/null || true
-          # Remove better-sqlite3 from standalone (provided by electron-builder)
-          rm -rf .next/standalone/.next/node_modules/better-sqlite3* 2>/dev/null || true
+
+          # Remove packages provided by electron-builder or not needed
           rm -rf .next/standalone/node_modules/better-sqlite3* 2>/dev/null || true
+          rm -rf .next/standalone/.next/node_modules/better-sqlite3* 2>/dev/null || true
+          rm -rf .next/standalone/node_modules/@img 2>/dev/null || true
+          rm -rf .next/standalone/node_modules/sharp 2>/dev/null || true
+          rm -rf .next/standalone/node_modules/.pnpm 2>/dev/null || true
+
+          # Remove package.json from standalone root — it triggers electron-builder's
+          # pnpm dependency collector which silently skips node_modules in extraResources.
+          # server.js embeds all config via __NEXT_PRIVATE_STANDALONE_CONFIG so this is safe.
+          find .next/standalone -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" -not -path "*/.next/*" -delete 2>/dev/null || true
 
       - name: Fix standalone directory structure
         run: node scripts/fix-standalone.js
+
+      - name: Debug standalone contents
+        shell: bash
+        run: |
+          echo "=== Standalone root ==="
+          ls -la .next/standalone/
+          echo "=== node_modules (top-level) ==="
+          ls .next/standalone/node_modules/ 2>/dev/null | head -20 || echo "NO node_modules at root"
+          # Check nested structure too (macOS CI nests under project path)
+          for d in .next/standalone/*/; do
+            if [ -d "$d/node_modules" ]; then
+              echo "=== node_modules in $d ==="
+              ls "$d/node_modules/" | head -20
+            fi
+          done
 
       - name: Rebuild native modules for Electron
         run: pnpm exec electron-rebuild -f -w better-sqlite3

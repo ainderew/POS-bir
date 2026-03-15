@@ -232,6 +232,17 @@ function startNextServer() {
       log('Standalone directory contents:');
       logDirContents(standaloneDir);
 
+      // Check node_modules explicitly (skipped by logDirContents above)
+      const nmDir = path.join(serverDir, 'node_modules');
+      const nmExists = fs.existsSync(nmDir);
+      log(`node_modules exists: ${nmExists}, path: ${nmDir}`);
+      if (nmExists) {
+        try {
+          const nmEntries = fs.readdirSync(nmDir).slice(0, 10);
+          log(`node_modules contents (first 10): ${nmEntries.join(', ')}`);
+        } catch {}
+      }
+
       // Set up environment
       process.env.PORT = '3000';
       process.env.HOSTNAME = '127.0.0.1';

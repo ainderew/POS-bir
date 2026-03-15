@@ -1,6 +1,6 @@
 {
   "name": "my-v0-project",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "scripts": {
     "build": "next build",
@@ -36,19 +36,7 @@
       },
       {
         "from": ".next/standalone",
-        "to": "standalone",
-        "filter": [
-          "**/*",
-          "!**/node_modules/@img/**",
-          "!**/node_modules/sharp/**",
-          "!**/node_modules/sharp",
-          "!**/node_modules/.pnpm/**/sharp/**",
-          "!**/node_modules/.pnpm/**/sharp",
-          "!**/node_modules/.pnpm/**/node_modules/sharp",
-          "!**/node_modules/.pnpm/**/node_modules/sharp/**",
-          "!**/node_modules/.pnpm/**/node_modules/@img",
-          "!**/node_modules/.pnpm/**/node_modules/@img/**"
-        ]
+        "to": "standalone"
       },
       {
         "from": ".next/static",
