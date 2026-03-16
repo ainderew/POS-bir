@@ -15,6 +15,26 @@ const path = require('path');
 const projectRoot = path.resolve(__dirname, '..');
 const standaloneDir = path.join(projectRoot, '.next', 'standalone');
 
+// Remove package.json files from standalone (not inside node_modules or .next).
+// These trigger electron-builder's pnpm dependency collector which silently
+// excludes node_modules from extraResources.
+function removeStandalonePackageJsons(dir, depth = 0) {
+  if (depth > 3) return;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const e of entries) {
+    if (e.name === 'node_modules' || e.name === '.next') continue;
+    const full = path.join(dir, e.name);
+    if (e.isFile() && e.name === 'package.json') {
+      fs.unlinkSync(full);
+      console.log(`Removed ${path.relative(projectRoot, full)}`);
+    } else if (e.isDirectory()) {
+      removeStandalonePackageJsons(full, depth + 1);
+    }
+  }
+}
+
+removeStandalonePackageJsons(standaloneDir);
+
 // Check if server.js is at the root of standalone
 const rootServerPath = path.join(standaloneDir, 'server.js');
 if (fs.existsSync(rootServerPath)) {

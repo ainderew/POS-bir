@@ -83,3 +83,34 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm exec electron-builder --publish always
+
+      - name: Verify packaged standalone has node_modules
+        shell: bash
+        run: |
+          # Find the unpacked resources directory in dist/
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            RESOURCES=$(find dist -type d -name "standalone" -path "*/resources/*" | head -1)
+          else
+            RESOURCES=$(find dist -type d -name "standalone" -path "*/Resources/*" | head -1)
+          fi
+
+          if [ -z "$RESOURCES" ]; then
+            echo "WARNING: Could not find standalone in packaged output — skipping verification"
+            exit 0
+          fi
+
+          echo "Standalone location: $RESOURCES"
+          ls "$RESOURCES/"
+
+          if [ ! -d "$RESOURCES/node_modules" ]; then
+            echo "ERROR: node_modules is MISSING from packaged standalone!"
+            echo "electron-builder likely stripped it during packaging."
+            exit 1
+          fi
+
+          if [ ! -d "$RESOURCES/node_modules/next" ]; then
+            echo "ERROR: next module is MISSING from packaged node_modules!"
+            exit 1
+          fi
+
+          echo "Verification passed: node_modules/next exists in packaged output"
