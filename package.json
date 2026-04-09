@@ -19,6 +19,7 @@
   "build": {
     "appId": "com.generalstore.pos",
     "productName": "General Store POS",
+    "afterPack": "./scripts/after-pack.js",
     "directories": {
       "output": "dist"
     },
