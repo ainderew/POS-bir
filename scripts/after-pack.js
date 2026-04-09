@@ -13,7 +13,13 @@ exports.default = async function afterPack(context) {
   // Locate the Resources directory in the packaged output
   let resourcesDir;
   if (context.electronPlatformName === "darwin") {
-    resourcesDir = path.join(context.appOutDir, "Contents", "Resources");
+    // appOutDir is e.g. dist/mac-arm64, the .app bundle is inside it
+    const appBundle = fs.readdirSync(context.appOutDir).find((f) => f.endsWith(".app"));
+    if (!appBundle) {
+      console.log("afterPack: no .app bundle found — skipping");
+      return;
+    }
+    resourcesDir = path.join(context.appOutDir, appBundle, "Contents", "Resources");
   } else {
     resourcesDir = path.join(context.appOutDir, "resources");
   }
