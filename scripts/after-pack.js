@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 
-/**
- * electron-builder afterPack hook.
- *
- * electron-builder strips `node_modules/` and `.next/` from extraResources
- * even when the filter is set to ["**/*"]. This hook restores them from the
- * build output after packing but before the installer is created.
- */
+// electron-builder afterPack hook.
+//
+// electron-builder strips node_modules/ and .next/ from extraResources
+// even with a wildcard filter. This hook restores them from the build
+// output after packing but before the installer is created.
 
 const fs = require("fs");
 const path = require("path");
