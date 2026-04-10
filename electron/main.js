@@ -41,18 +41,26 @@ console.error = (...args) => {
   _origConsoleError.apply(console, args);
 };
 
-let store;
 let nextServerProcess = null;
 
-// Initialize Store dynamically (since it might be an ESM module)
-const storeReady = (async () => {
+// Simple JSON file store (replaces electron-store to avoid ESM/pnpm dep issues)
+const storeFile = path.join(app.getPath('userData'), 'pos-config.json');
+
+function storeGet(key, defaultValue = null) {
   try {
-    const module = await import('electron-store');
-    store = new module.default();
-  } catch (error) {
-    console.error('Failed to load electron-store:', error);
+    const data = JSON.parse(fs.readFileSync(storeFile, 'utf-8'));
+    return data[key] !== undefined ? data[key] : defaultValue;
+  } catch {
+    return defaultValue;
   }
-})();
+}
+
+function storeSet(key, value) {
+  let data = {};
+  try { data = JSON.parse(fs.readFileSync(storeFile, 'utf-8')); } catch {}
+  data[key] = value;
+  fs.writeFileSync(storeFile, JSON.stringify(data, null, 2));
+}
 
 // Single instance lock — quit if another instance is already running
 // Consistent isDev check used throughout the app
@@ -335,7 +343,7 @@ function createWindow() {
   });
 
   // Go to /pos if terminal is registered, otherwise go to home for setup
-  const terminalId = store ? store.get('terminalId', null) : null;
+  const terminalId = storeGet('terminalId');
   const startPath = terminalId ? '/pos' : '/';
   const url = `http://localhost:3000${startPath}`;
   log(`Loading URL: ${url}, terminalId=${terminalId}`);
@@ -411,19 +419,14 @@ ipcMain.handle('print-receipt', async (event, data) => {
 
 ipcMain.handle('get-sync-status', () => syncStatus);
 
-ipcMain.handle('get-terminal-id', async () => {
-  await storeReady;
-  return store ? store.get('terminalId', null) : null;
+ipcMain.handle('get-terminal-id', () => {
+  return storeGet('terminalId');
 });
 
-ipcMain.handle('save-terminal-id', async (event, id) => {
+ipcMain.handle('save-terminal-id', (event, id) => {
   if (typeof id !== 'string' || id.length > 256) return false;
-  await storeReady;
-  if (store) {
-    store.set('terminalId', id);
-    return true;
-  }
-  return false;
+  storeSet('terminalId', id);
+  return true;
 });
 
 app.on('second-instance', () => {
@@ -436,8 +439,7 @@ app.on('second-instance', () => {
 app.on('ready', async () => {
   log('App ready, isPackaged=' + app.isPackaged);
   log('userData path: ' + app.getPath('userData'));
-  await storeReady;
-  log('Store ready');
+  log('Store file: ' + storeFile);
   initSqlite();
   log('SQLite initialized');
 
