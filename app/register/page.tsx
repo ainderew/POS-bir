@@ -38,8 +38,15 @@ export default function RegisterPage() {
       })
 
       if (!res.ok) {
-        const error = await res.json()
-        throw new Error(error.error || "Registration failed")
+        const text = await res.text()
+        let message = "Registration failed"
+        try {
+          const error = JSON.parse(text)
+          message = error.error || message
+        } catch {
+          message = text || message
+        }
+        throw new Error(message)
       }
 
       const terminal = await res.json()
