@@ -278,6 +278,18 @@ function startNextServer() {
       log(`NODE_PATH set to: ${nodePaths}`);
       log(`SQLITE_PATH = ${process.env.SQLITE_PATH}`);
 
+      // Next.js Turbopack mangles external package names with a build hash
+      // (e.g. require('better-sqlite3-90e2652d1716b047')). Intercept these
+      // and redirect to the real module name.
+      const Module = require('module');
+      const origResolveFilename = Module._resolveFilename;
+      Module._resolveFilename = function (request, ...args) {
+        if (request.startsWith('better-sqlite3-')) {
+          return origResolveFilename.call(this, 'better-sqlite3', ...args);
+        }
+        return origResolveFilename.call(this, request, ...args);
+      };
+
       // Test-load better-sqlite3 from standalone to verify native binding works
       try {
         const bsqlitePath = path.join(standaloneDir, 'node_modules', 'better-sqlite3');
