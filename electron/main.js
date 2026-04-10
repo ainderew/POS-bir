@@ -24,6 +24,23 @@ function log(msg) {
   fs.appendFileSync(logFile, line);
 }
 
+// Capture runtime errors from Next.js server (API route failures, etc.)
+process.on('uncaughtException', (err) => {
+  log('UNCAUGHT EXCEPTION: ' + err.message + '\n' + err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message + '\n' + reason.stack : String(reason);
+  log('UNHANDLED REJECTION: ' + msg);
+});
+
+// Route console.error to log file so Next.js server errors are captured
+const _origConsoleError = console.error;
+console.error = (...args) => {
+  const msg = args.map(a => (typeof a === 'string' ? a : (a instanceof Error ? a.message + '\n' + a.stack : JSON.stringify(a)))).join(' ');
+  log('[stderr] ' + msg);
+  _origConsoleError.apply(console, args);
+};
+
 let store;
 let nextServerProcess = null;
 
@@ -259,6 +276,18 @@ function startNextServer() {
       process.env.NODE_PATH = nodePaths;
       require('module').Module._initPaths();
       log(`NODE_PATH set to: ${nodePaths}`);
+      log(`SQLITE_PATH = ${process.env.SQLITE_PATH}`);
+
+      // Test-load better-sqlite3 from standalone to verify native binding works
+      try {
+        const bsqlitePath = path.join(standaloneDir, 'node_modules', 'better-sqlite3');
+        const TestDb = require(bsqlitePath);
+        const testDb = new TestDb(':memory:');
+        testDb.close();
+        log('better-sqlite3 test-load: OK (native binding works)');
+      } catch (err) {
+        log('better-sqlite3 test-load FAILED: ' + err.message + '\n' + err.stack);
+      }
 
       // Require the server - it will start listening
       try {
