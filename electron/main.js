@@ -56,10 +56,14 @@ function storeGet(key, defaultValue = null) {
 }
 
 function storeSet(key, value) {
+  log(`storeSet: ${key} = ${JSON.stringify(value)}`);
   let data = {};
   try { data = JSON.parse(fs.readFileSync(storeFile, 'utf-8')); } catch {}
   data[key] = value;
   fs.writeFileSync(storeFile, JSON.stringify(data, null, 2));
+  // Verify write
+  const verify = storeGet(key);
+  log(`storeSet verify: ${key} = ${JSON.stringify(verify)}`);
 }
 
 // Single instance lock — quit if another instance is already running
@@ -343,7 +347,28 @@ function createWindow() {
   });
 
   // Go to /pos if terminal is registered, otherwise go to home for setup
-  const terminalId = storeGet('terminalId');
+  let terminalId = storeGet('terminalId');
+
+  // Fallback: if config is empty, check DB for existing terminal
+  if (!terminalId) {
+    try {
+      const Database = require('better-sqlite3');
+      const dbPath = process.env.SQLITE_PATH;
+      if (dbPath && fs.existsSync(dbPath)) {
+        const db = new Database(dbPath, { readonly: true });
+        const row = db.prepare('SELECT id FROM terminals LIMIT 1').get();
+        db.close();
+        if (row && row.id) {
+          log(`DB fallback: found terminal ${row.id}, saving to config`);
+          storeSet('terminalId', row.id);
+          terminalId = row.id;
+        }
+      }
+    } catch (err) {
+      log('DB fallback failed: ' + err.message);
+    }
+  }
+
   const startPath = terminalId ? '/pos' : '/';
   const url = `http://localhost:3000${startPath}`;
   log(`Loading URL: ${url}, terminalId=${terminalId}`);
@@ -424,7 +449,11 @@ ipcMain.handle('get-terminal-id', () => {
 });
 
 ipcMain.handle('save-terminal-id', (event, id) => {
-  if (typeof id !== 'string' || id.length > 256) return false;
+  log(`save-terminal-id IPC received: type=${typeof id}, value=${JSON.stringify(id)}`);
+  if (typeof id !== 'string' || id.length > 256) {
+    log(`save-terminal-id REJECTED: type=${typeof id}, length=${id?.length}`);
+    return false;
+  }
   storeSet('terminalId', id);
   return true;
 });
