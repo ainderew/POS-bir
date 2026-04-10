@@ -31,14 +31,19 @@ export async function POST(request: Request) {
       )
     }
 
+    const generatedId = crypto.randomUUID()
     const terminal = await queryOne(
       `INSERT INTO terminals (id, pos_id, ptu_number, serial_number)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [crypto.randomUUID(), posId, ptuNumber, serialNumber]
+      [generatedId, posId, ptuNumber, serialNumber]
     )
 
-    return NextResponse.json(terminal, { status: 201 })
+    console.error("[terminals] DEBUG queryOne result:", JSON.stringify(terminal))
+
+    // Fallback: if RETURNING * didn't populate id, use the generated one
+    const result = terminal && terminal.id ? terminal : { ...terminal, id: generatedId }
+    return NextResponse.json(result, { status: 201 })
   } catch (error: any) {
     console.error("[terminals] Error creating terminal:", error)
 

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -21,7 +20,6 @@ type RegisterForm = z.infer<typeof schema>
 
 export default function RegisterPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const router = useRouter()
   
   const { register, handleSubmit, formState: { errors } } = useForm<RegisterForm>({
     resolver: zodResolver(schema)
@@ -60,9 +58,9 @@ export default function RegisterPage() {
       }
 
       toast.success("Terminal registered successfully!")
-      
-      // 3. Redirect to POS
-      router.push("/pos")
+
+      // 3. Redirect to POS (use window.location as fallback for Electron)
+      window.location.href = "/pos"
 
     } catch (error: any) {
       console.error("[Register] Error:", error)
