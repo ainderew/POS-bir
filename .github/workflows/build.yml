@@ -82,7 +82,7 @@ jobs:
       - name: Copy Electron-rebuilt better-sqlite3 to standalone
         shell: bash
         run: |
-          SQLITE_SRC=$(node -e "console.log(require.resolve('better-sqlite3/package.json').replace('/package.json',''))")
+          SQLITE_SRC=$(node -e "console.log(require('path').dirname(require.resolve('better-sqlite3/package.json')))")
           cp -r "$SQLITE_SRC" .next/standalone/node_modules/better-sqlite3
           echo "Copied better-sqlite3 from $SQLITE_SRC"
           ls .next/standalone/node_modules/better-sqlite3/
