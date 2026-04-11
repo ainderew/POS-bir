@@ -49,10 +49,10 @@ export async function captureOptimizedAuditPhoto(): Promise<AuditCaptureResult> 
       }
     }
 
-    // Request camera access
+    // Request camera access (with timeout — getUserMedia can hang in Electron)
     let stream: MediaStream
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
+      const streamPromise = navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: TARGET_SIZE },
           height: { ideal: TARGET_SIZE },
@@ -60,6 +60,10 @@ export async function captureOptimizedAuditPhoto(): Promise<AuditCaptureResult> 
         },
         audio: false
       })
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Camera timeout')), 5000)
+      )
+      stream = await Promise.race([streamPromise, timeoutPromise])
     } catch (err: any) {
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         return {
