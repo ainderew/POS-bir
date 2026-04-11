@@ -33,7 +33,7 @@ export function useTerminal() {
 
       // 2. Validate terminal ID exists in database
       const res = await fetch(`/api/terminals/${id}`)
-      if (!res.ok) {
+      if (res.status === 404) {
         console.log("[useTerminal] Terminal ID not found in DB. Clearing stale ID...")
         if (window.electronAPI) {
           await window.electronAPI.saveTerminalId("")
@@ -41,6 +41,10 @@ export function useTerminal() {
         localStorage.removeItem("pos_terminal_id")
         router.push("/register")
         return
+      }
+      // Don't clear on 500 — server error doesn't mean terminal is gone
+      if (!res.ok) {
+        console.error("[useTerminal] Server error validating terminal:", res.status)
       }
 
       setTerminalId(id)
