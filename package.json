@@ -50,6 +50,7 @@
       }
     ],
     "mac": {
+      "icon": "build/icon.png",
       "category": "public.app-category.business",
       "target": "dmg",
       "extendInfo": {
@@ -58,6 +59,7 @@
       }
     },
     "win": {
+      "icon": "build/icon.png",
       "target": "nsis"
     },
     "nsis": {

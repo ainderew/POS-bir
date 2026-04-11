@@ -5,14 +5,15 @@ import { queryOne } from "@/lib/db"
 // GET: Fetch single user
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const user = await queryOne(
       `SELECT id, full_name, role, is_active, created_at, updated_at
        FROM users
        WHERE id = $1`,
-      [params.id]
+      [id]
     )
 
     if (!user) {
@@ -35,9 +36,10 @@ export async function GET(
 // PATCH: Update user (change PIN, deactivate, etc.)
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const { full_name, pin, role, is_active } = await request.json()
 
     // Build dynamic update query
@@ -91,7 +93,7 @@ export async function PATCH(
     updates.push(`updated_at = CURRENT_TIMESTAMP`)
 
     // Add user ID to values array
-    values.push(params.id)
+    values.push(id)
 
     const user = await queryOne(
       `UPDATE users

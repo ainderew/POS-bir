@@ -4,12 +4,13 @@ import { queryOne } from "@/lib/db"
 // GET: Fetch single terminal
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const terminal = await queryOne(
       "SELECT * FROM terminals WHERE id = $1",
-      [params.id]
+      [id]
     )
 
     if (!terminal) {
@@ -32,9 +33,10 @@ export async function GET(
 // PATCH: Update terminal
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const { ptuNumber, serialNumber } = await request.json()
 
     const terminal = await queryOne(
@@ -44,7 +46,7 @@ export async function PATCH(
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
        RETURNING *`,
-      [ptuNumber, serialNumber, params.id]
+      [ptuNumber, serialNumber, id]
     )
 
     if (!terminal) {
