@@ -391,6 +391,11 @@ function createWindow() {
     log(`Page failed to load: ${errorCode} - ${errorDescription}`);
   });
 
+  // Refocus window after navigation (Windows loses focus on page reload)
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.focus();
+  });
+
   // Clear stale localStorage terminal ID if electron-store has none
   if (!terminalId) {
     mainWindow.webContents.on('did-finish-load', () => {
