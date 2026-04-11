@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, session } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -330,6 +330,15 @@ function startNextServer() {
 }
 
 function createWindow() {
+  // Grant camera/microphone permissions so getUserMedia works for audit photos
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
