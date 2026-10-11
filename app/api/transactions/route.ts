@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
-import { query, transaction, getPosId } from "@/lib/db"
-import { calculateTransactionTotals } from "@/lib/ph-tax"
-import type { CartItem, Transaction } from "@/lib/types"
+import { query, transaction, getPosId, toDbTimestamp } from "@/lib/db"
+import { calculateTransactionTotals, getActivePrice, roundMoney, toCents } from "@/lib/ph-tax"
+import type { CartItem, Product, Transaction } from "@/lib/types"
+
+// A sale rejected for a reason the cashier can act on (returned with its own status)
+class SaleError extends Error {
+  constructor(message: string, public status: number, public details: Record<string, unknown> = {}) {
+    super(message)
+  }
+}
+
+const ALLOCATE_INVOICE_SQL =
+  "UPDATE settings SET value = (value::int + 1)::text WHERE key = 'next_invoice_number' RETURNING (value::int - 1)::text AS issued"
 
 export async function GET(request: Request) {
   try {
@@ -19,13 +29,14 @@ export async function GET(request: Request) {
     const params: any[] = []
     const conditions: string[] = []
 
+    // created_at is stored as UTC "YYYY-MM-DD HH:MM:SS" text; compare in that format
     if (startDate) {
-      params.push(startDate)
+      params.push(toDbTimestamp(startDate))
       conditions.push(`t.created_at >= $${params.length}::timestamp`)
     }
 
     if (endDate) {
-      params.push(endDate)
+      params.push(toDbTimestamp(endDate))
       conditions.push(`t.created_at <= $${params.length}::timestamp`)
     }
 
@@ -67,16 +78,57 @@ export async function POST(request: Request) {
     
     const posId = getPosId()
 
-    if (!cart || cart.length === 0) {
+    if (!Array.isArray(cart) || cart.length === 0) {
       return NextResponse.json({ error: "Cart is empty" }, { status: 400 })
     }
 
-    // 1. Calculate PH-Compliant Totals
-    const totals = calculateTransactionTotals(cart, paxCount || 1, seniorCount || 0)
-    const changeAmount = amount_tendered ? parseFloat(amount_tendered) - totals.netSales : 0
+    // Total the cashier was shown and tendered against (from the client's cart snapshot)
+    const clientTotals = calculateTransactionTotals(cart, paxCount || 1, seniorCount || 0)
 
     const result = await transaction(async (client) => {
-      // 1.1 Store Credit Validation
+      // 1. Re-price every line from current product data (client prices, costs and
+      //    tax categories are not trusted; a persisted cart can be stale)
+      const currentProducts: Product[] = []
+      for (const item of cart as CartItem[]) {
+        const productRes = await client.query("SELECT * FROM products WHERE id = $1", [item.product?.id])
+        if (productRes.rows[0]) currentProducts.push(productRes.rows[0])
+      }
+
+      const pricedCart: CartItem[] = (cart as CartItem[]).map((item) => {
+        const product = currentProducts.find((p) => p.id === item.product?.id)
+        if (!product) {
+          throw new SaleError(
+            `${item.product?.name || "A product"} is no longer available — remove it from the cart`,
+            409,
+            { products: currentProducts }
+          )
+        }
+        const quantity = Number(item.quantity)
+        if (!(quantity > 0) || (product.unit_type === "QUANTITY" && !Number.isInteger(quantity))) {
+          throw new SaleError(`Invalid quantity for ${product.name}`, 400)
+        }
+        return { product, quantity, active_price: getActivePrice(product, quantity) }
+      })
+
+      // 1.1 Calculate PH-Compliant Totals from server prices. Both sides round to
+      //     centavos with the same code, so any centavo difference is a real price change.
+      const totals = calculateTransactionTotals(pricedCart, paxCount || 1, seniorCount || 0)
+      if (toCents(totals.netSales) !== toCents(clientTotals.netSales)) {
+        throw new SaleError("Prices changed — please refresh the cart", 409, {
+          products: currentProducts,
+          net_sales: totals.netSales,
+          client_net_sales: clientTotals.netSales,
+        })
+      }
+
+      const tendered = parseFloat(amount_tendered)
+      const amountTendered = Number.isFinite(tendered) && tendered !== 0 ? roundMoney(tendered) : null
+      const changeAmount = amountTendered !== null ? roundMoney(amountTendered - totals.netSales) : 0
+      if ((payment_method || "CASH") === "CASH" && amountTendered !== null && toCents(amountTendered) < toCents(totals.netSales)) {
+        throw new SaleError("Amount tendered is less than the total due", 400)
+      }
+
+      // 1.2 Store Credit Validation
       if (payment_method === "STORE_CREDIT") {
         if (!reference_number) {
            throw new Error("Customer ID is required for Store Credit")
@@ -94,23 +146,27 @@ export async function POST(request: Request) {
         const customer = customerRes.rows[0]
         const currentDebt = Number(customer.current_debt_balance)
         const limit = Number(customer.credit_limit)
-        const newBalance = currentDebt + totals.netSales
+        const newBalance = roundMoney(currentDebt + totals.netSales)
         
         if (customer.credit_status === 'BLOCKED') {
            throw new Error("Customer account is BLOCKED")
         }
         
         if (newBalance > limit) {
-           throw new Error(`Credit limit exceeded. Limit: ${limit}, New Balance: ${newBalance}`)
+           throw new Error(`Credit limit exceeded. Limit: ${limit.toFixed(2)}, New Balance: ${newBalance.toFixed(2)}`)
         }
       }
 
-      // 2. Get and Increment Invoice Number
-      const invoiceResult = await client.query(
-        "UPDATE settings SET value = (value::int + 1)::text WHERE key = 'next_invoice_number' RETURNING value"
-      )
-      const invoiceSeq = invoiceResult.rows[0].value.padStart(6, '0')
-      const invoiceNumber = `SI-${invoiceSeq}`
+      // 2. Allocate Invoice Number (next_invoice_number holds the next number to issue)
+      const allocateInvoiceNumber = async () => {
+        const invoiceResult = await client.query(ALLOCATE_INVOICE_SQL)
+        return `SI-${String(invoiceResult.rows[0].issued).padStart(6, '0')}`
+      }
+      let invoiceNumber = await allocateInvoiceNumber()
+      // Databases written before this fix stored the last-issued number; skip it instead of reusing it
+      while ((await client.query("SELECT 1 FROM transactions WHERE invoice_number = $1", [invoiceNumber])).rows.length > 0) {
+        invoiceNumber = await allocateInvoiceNumber()
+      }
 
       // 3. Create transaction with BIR breakdown
       const transactionResult = await client.query(
@@ -128,7 +184,7 @@ export async function POST(request: Request) {
           totals.grossSales, totals.vatableSales, totals.vatAmount, totals.vatExemptSales, totals.zeroRatedSales, totals.totalDiscount, totals.netSales,
           paxCount || 1, seniorCount || 0, scPwdData?.idNumber || null, scPwdData?.name || null,
           payment_method || "CASH",
-          amount_tendered || null,
+          amountTendered,
           changeAmount >= 0 ? changeAmount : 0,
           reference_number || null
         ],
@@ -136,23 +192,26 @@ export async function POST(request: Request) {
 
       const newTransaction = transactionResult.rows[0]
 
-      // 4. Insert items and update stock
-      for (const item of cart as CartItem[]) {
-        await client.query(
+      // 4. Insert items (at the price actually charged) and update stock
+      const soldItems: any[] = []
+      for (const item of pricedCart) {
+        const itemResult = await client.query(
           `INSERT INTO transaction_items
            (id, transaction_id, product_id, quantity_sold, price_at_sale, cost_at_sale, tax_category, pos_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING *`,
           [
             crypto.randomUUID(),
             newTransaction.id,
             item.product.id,
             item.quantity,
-            item.product.selling_price,
+            item.active_price,
             item.product.cost_price,
             item.product.tax_category,
             posId
           ],
         )
+        soldItems.push({ ...itemResult.rows[0], name: item.product.name })
 
         const updateResult = await client.query(
           `UPDATE products 
@@ -174,8 +233,8 @@ export async function POST(request: Request) {
          // Update Customer Balance & Metrics
          const updateCustomer = await client.query(
             `UPDATE customers 
-             SET current_debt_balance = current_debt_balance + $1, 
-                 total_spend = total_spend + $1,
+             SET current_debt_balance = ROUND(current_debt_balance + $1, 2), 
+                 total_spend = ROUND(total_spend + $1, 2),
                  last_visit_at = NOW(),
                  updated_at = NOW()
              WHERE id = $2
@@ -194,11 +253,15 @@ export async function POST(request: Request) {
          )
       }
 
-      return newTransaction
+      return { ...newTransaction, items: soldItems }
     })
 
     return NextResponse.json(result, { status: 201 })
   } catch (error: any) {
+    if (error instanceof SaleError) {
+      console.warn(`[v0] Sale rejected (${error.status}): ${error.message}`)
+      return NextResponse.json({ error: error.message, ...error.details }, { status: error.status })
+    }
     console.error("[v0] Transaction error:", error)
     return NextResponse.json({ error: error.message || "Failed to process transaction" }, { status: 500 })
   }

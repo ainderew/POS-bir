@@ -6,7 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Separator } from "@/components/ui/separator"
 import { Trash2, ShoppingCart, Loader2, UserCheck, X, Banknote, CreditCard, Wallet, CheckCircle2, Smartphone, Hand, FileText, UserPlus, Users } from "lucide-react"
 import type { CartItem, Customer } from "@/lib/types"
-import { calculateTransactionTotals } from "@/lib/ph-tax"
+import { calculateTransactionTotals, roundMoney, toCents } from "@/lib/ph-tax"
 import { Badge } from "@/components/ui/badge"
 import type { SCPWDData } from "./sc-pwd-dialog"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -66,13 +66,18 @@ export function Cart({
     scPwdData?.seniorCount || 0
   )
 
+  // Compare money in integer centavos (float pesos make 35.71 < 35.714... fail "Exact")
+  const netSalesCents = toCents(totals.netSales)
+  const tenderedCents = amountTendered ? toCents(parseFloat(amountTendered)) : NaN
+  const isTenderShort = !(tenderedCents >= netSalesCents) // also true for empty/invalid input
+
   const changeAmount = paymentMethod === "CASH" && amountTendered 
-    ? parseFloat(amountTendered) - totals.netSales 
+    ? (tenderedCents - netSalesCents) / 100
     : 0
 
   const isCheckoutDisabled = isProcessing || items.length === 0 || (
     paymentMethod === "CASH" 
-      ? (!amountTendered || parseFloat(amountTendered) < totals.netSales)
+      ? (!amountTendered || isTenderShort)
       : (paymentMethod === "GCASH" || paymentMethod === "MAYA" || paymentMethod === "CARD")
         ? (referenceNumber.length < 4)
         : (paymentMethod === "STORE_CREDIT" ? referenceNumber.length < 1 : false)
@@ -348,7 +353,7 @@ export function Cart({
                       </div>
                     </div>
                     <div className="mt-1 font-bold text-sm text-primary">
-                      ₱{(Number(item.active_price || item.product.selling_price) * Number(item.quantity)).toFixed(2)}
+                      ₱{roundMoney(Number(item.active_price ?? item.product.selling_price) * Number(item.quantity)).toFixed(2)}
                     </div>
                   </div>
                 </div>
@@ -417,7 +422,7 @@ export function Cart({
                           variant="secondary" 
                           size="sm" 
                           className="h-5 px-1.5 text-[9px] uppercase font-bold bg-green-600 text-white hover:bg-green-700"
-                          onClick={() => setAmountTendered(totals.netSales.toFixed(2))}
+                          onClick={() => setAmountTendered((netSalesCents / 100).toFixed(2))}
                         >
                           Exact Amount
                         </Button>
@@ -448,7 +453,7 @@ export function Cart({
                         </Button>
                       ))}
                     </div>
-                    {amountTendered && parseFloat(amountTendered) < totals.netSales && (
+                    {amountTendered && isTenderShort && (
                       <p className="text-[10px] font-bold text-destructive uppercase">Insufficient amount</p>
                     )}
                   </div>

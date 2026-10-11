@@ -5,7 +5,11 @@ import { queryOne, transaction, getPosId } from "@/lib/db"
 export async function GET() {
   try {
     const shift = await queryOne(
-      "SELECT * FROM shifts WHERE status = 'OPEN' ORDER BY start_time DESC LIMIT 1"
+      `SELECT s.*, u.full_name as cashier_name
+       FROM shifts s
+       LEFT JOIN users u ON s.user_id = u.id
+       WHERE s.status = 'OPEN'
+       ORDER BY s.start_time DESC LIMIT 1`
     )
     return NextResponse.json(shift || null)
   } catch (error) {

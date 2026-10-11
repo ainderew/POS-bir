@@ -23,13 +23,14 @@ import { CreditCard, Grid3x3, Wallet, Banknote, LogOut, Settings } from "lucide-
 import { useTerminal } from "@/hooks/use-terminal"
 
 import { useCartStore } from "@/stores/use-cart-store"
+import { lessVatOf, roundMoney } from "@/lib/ph-tax"
 
 export default function POSPage() {
   const router = useRouter()
   const { terminalId } = useTerminal()
   
   // Global Cart Store
-  const { items: cart, addItem, removeItem, updateQuantity, clearCart, setActiveShift: setStoreShift } = useCartStore()
+  const { items: cart, addItem, removeItem, updateQuantity, clearCart, refreshProducts, setActiveShift: setStoreShift } = useCartStore()
   
   const [weightProduct, setWeightProduct] = useState<Product | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -106,17 +107,27 @@ export default function POSPage() {
   }, [activeShift, setStoreShift])
 
   const checkActiveShift = async () => {
+    // On any failure the gate stays closed: no shift is set and login is not skipped
+    const showShiftError = (message?: string) =>
+      toast.error(message || "Failed to verify shift status", {
+        action: { label: "Retry", onClick: () => checkActiveShift() },
+      })
+
     try {
       const res = await fetch("/api/shifts/current")
-      const data = await res.json()
-      if (data) {
-        setActiveShift(data)
-      } else {
+      const data = await res.json().catch(() => undefined)
+      if (!res.ok || data === undefined) {
+        showShiftError(data?.error)
+      } else if (data === null) {
         // No active shift - trigger authentication flow
         setIsAuthenticating(true)
+      } else if (typeof data === "object" && typeof data.id === "string") {
+        setActiveShift(data)
+      } else {
+        showShiftError()
       }
     } catch (e) {
-      toast.error("Failed to verify shift status")
+      showShiftError()
     }
   }
 
@@ -283,33 +294,67 @@ export default function POSPage() {
       if (response.ok) {
         toast.success(`Transaction ${data.invoice_number} completed!`)
         
-        // Direct Print Bridge
+        // Direct Print Bridge. The sale is already recorded: a print problem must not
+        // surface as a checkout failure (or keep the cart for a re-ring).
         if (window.electronAPI) {
-          const settingsRes = await fetch("/api/settings")
-          const settings = await settingsRes.json()
-          
-          if (settings.auto_print === "true") {
-            await window.electronAPI.printReceipt({
-              businessName: settings.business_name,
-              address: settings.business_address,
-              tin: settings.business_tin,
-              invoiceNumber: data.invoice_number,
-              items: cart.map(i => ({
-                name: i.product.name,
-                quantity: i.quantity,
-                price: i.product.selling_price * i.quantity
-              })),
-              vatableSales: parseFloat(data.vatable_sales),
-              vatAmount: parseFloat(data.vat_amount),
-              vatExemptSales: parseFloat(data.vat_exempt_sales),
-              total: parseFloat(data.net_sales)
-            })
+          try {
+            const settingsRes = await fetch("/api/settings")
+            const settings = await settingsRes.json()
+
+            if (settings.auto_print === "true") {
+              // created_at is zone-less UTC text ("YYYY-MM-DD HH:MM:SS")
+              const saleDate = typeof data.created_at === "string"
+                ? new Date(data.created_at.replace(" ", "T") + "Z")
+                : null
+
+              const printResult = await window.electronAPI.printReceipt({
+                type: "sale",
+                businessName: settings.business_name,
+                address: settings.business_address,
+                tin: settings.business_tin,
+                invoiceNumber: data.invoice_number,
+                date: saleDate && !isNaN(saleDate.getTime()) ? saleDate.toISOString() : undefined,
+                cashier: authenticatedUser?.full_name || activeShift?.cashier_name || undefined,
+                customerName: data.sc_pwd_name || undefined,
+                scPwdId: data.sc_pwd_id || undefined,
+                // Lines as recorded by the server, at the price actually charged (e.g. wholesale)
+                items: (data.items ?? []).map((i: { name: string, quantity_sold: number, price_at_sale: number }) => ({
+                  name: i.name,
+                  quantity: i.quantity_sold,
+                  unitPrice: i.price_at_sale,
+                  lineTotal: roundMoney(i.price_at_sale * i.quantity_sold)
+                })),
+                subtotal: parseFloat(data.gross_sales),
+                lessVat: lessVatOf(data),
+                discount: parseFloat(data.total_discount),
+                vatableSales: parseFloat(data.vatable_sales),
+                vatAmount: parseFloat(data.vat_amount),
+                vatExemptSales: parseFloat(data.vat_exempt_sales),
+                zeroRatedSales: parseFloat(data.zero_rated_sales),
+                total: parseFloat(data.net_sales),
+                paymentMethod: data.payment_method,
+                referenceNumber: data.reference_number || undefined,
+                amountTendered: data.amount_tendered ?? undefined,
+                change: data.change_amount ?? undefined
+              })
+              if (!printResult.success) {
+                toast.error("Receipt failed to print: " + (printResult.error || "Unknown error"))
+              }
+            }
+          } catch (printError: any) {
+            toast.error("Receipt failed to print: " + (printError?.message || "Unknown error"))
           }
         }
 
         clearCart()
         setScPwdData(null)
         setRefreshKey(prev => prev + 1)
+      } else if (response.status === 409) {
+        // Stale cart: nothing was charged. Reload current product data so the cashier can re-check the total.
+        if (Array.isArray(data.products)) refreshProducts(data.products)
+        toast.error(data.error || "Prices changed — please refresh the cart", {
+          description: "Cart reloaded with current prices. Review the total before charging.",
+        })
       } else {
         toast.error(data.error || "Transaction failed")
       }

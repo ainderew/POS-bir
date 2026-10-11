@@ -40,8 +40,10 @@ export function ProductSearch({ onProductSelect, searchTerm: externalSearchTerm,
         const product = await response.json()
         onProductSelect(product)
         setSearchTerm("")
-      } else {
+      } else if (response.status === 404) {
         toast.error(`Product not found: ${barcode}`)
+      } else {
+        toast.error("Error searching for product")
       }
     } catch (error) {
       toast.error("Error searching for product")
@@ -65,9 +67,11 @@ export function ProductSearch({ onProductSelect, searchTerm: externalSearchTerm,
     setIsSearching(true)
     try {
       const response = await fetch(`/api/products?search=${encodeURIComponent(value)}`)
-      const products = await response.json()
+      const products = response.ok ? await response.json() : null
 
-      if (products.length === 1) {
+      if (!Array.isArray(products)) {
+        toast.error("Error searching for product")
+      } else if (products.length === 1) {
         onProductSelect(products[0])
         setSearchTerm("")
       } else if (products.length === 0) {

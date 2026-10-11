@@ -28,8 +28,9 @@ import { captureOptimizedAuditPhoto } from "@/lib/audit-service"
 interface ManagerOverrideModalProps {
   isOpen: boolean
   onClose: () => void
-  onAuthorized: (data: { 
+  onAuthorized: (data: {
     managerId: string
+    managerName: string
     pin: string
     reason: string
     auditImageBase64: string | null
@@ -137,6 +138,7 @@ export function ManagerOverrideModal({
       // 2. Pass data to parent
       await onAuthorized({
         managerId: selectedManager.id,
+        managerName: selectedManager.full_name,
         pin,
         reason,
         auditImageBase64

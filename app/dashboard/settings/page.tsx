@@ -29,6 +29,7 @@ import {
   DialogFooter
 } from "@/components/ui/dialog"
 import { ManagerAuthDialog } from "@/components/pos/manager-auth-dialog"
+import { useTerminal } from "@/hooks/use-terminal"
 
 export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
@@ -37,6 +38,10 @@ export default function SettingsPage() {
   const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [historyData, setHistoryData] = useState<any[]>([])
+  // Z-reading advances this terminal's Z counter and grand total
+  // Only the Z-reading uses the terminal ID (the server falls back to its own lookup without
+  // one), so a missing ID must not redirect the rest of the settings page to /register
+  const { terminalId, loading: isTerminalLoading } = useTerminal({ redirectIfMissing: false })
   const [isHistoryLoading, setIsHistoryLoading] = useState(false)
   
   const [settings, setSettings] = useState({
@@ -48,6 +53,8 @@ export default function SettingsPage() {
     auto_print: false,
     accumulated_grand_total: "0.00"
   })
+  // The API never returns the PIN itself; manager_pin above only holds a new PIN typed here
+  const [hasManagerPin, setHasManagerPin] = useState(false)
 
   useEffect(() => {
     fetchSettings()
@@ -58,8 +65,11 @@ export default function SettingsPage() {
       const response = await fetch("/api/settings")
       const data = await response.json()
       if (response.ok) {
+        const { has_manager_pin, ...rest } = data
+        setHasManagerPin(Boolean(has_manager_pin))
         setSettings({
-          ...data,
+          ...rest,
+          manager_pin: "", // Blank = keep current PIN
           auto_print: data.auto_print === "true"
         })
       }
@@ -80,8 +90,11 @@ export default function SettingsPage() {
       })
       if (response.ok) {
         toast.success("Settings saved successfully")
+        if (settings.manager_pin) setHasManagerPin(true)
+        setSettings((prev) => ({ ...prev, manager_pin: "" }))
       } else {
-        toast.error("Failed to save settings")
+        const data = await response.json().catch(() => ({}))
+        toast.error(data.error || "Failed to save settings")
       }
     } catch (error) {
       toast.error("An error occurred")
@@ -103,7 +116,7 @@ export default function SettingsPage() {
       const response = await fetch("/api/reports/z-reading", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin })
+        body: JSON.stringify({ pin, terminalId })
       })
       const data = await response.json()
       
@@ -223,11 +236,16 @@ export default function SettingsPage() {
                 <Input 
                   id="manager_pin" 
                   type="password" 
+                  inputMode="numeric"
+                  autoComplete="new-password"
                   maxLength={4}
+                  placeholder={hasManagerPin ? "Unchanged" : "Set a 4-digit PIN"}
                   value={settings.manager_pin} 
                   onChange={(e) => setSettings({...settings, manager_pin: e.target.value})}
                 />
-                <p className="text-[10px] text-muted-foreground italic">Required for Voids and Z-Readings</p>
+                <p className="text-[10px] text-muted-foreground italic">
+                  Required for Voids and Z-Readings. Leave blank to keep the current PIN.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="vat_rate">VAT Rate (%)</Label>
@@ -274,7 +292,7 @@ export default function SettingsPage() {
                       className="flex-1 h-12 text-lg" 
                       variant="destructive"
                       onClick={handleZReadingTrigger}
-                      disabled={isZReadingLoading}
+                      disabled={isZReadingLoading || isTerminalLoading}
                     >
                       {isZReadingLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5 mr-2" />}
                       Run Z-Reading
@@ -323,11 +341,17 @@ export default function SettingsPage() {
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span className="text-muted-foreground">Reading Date:</span>
                 <span className="text-right font-medium">{new Date(lastZData.reading_date).toLocaleString()}</span>
+                <span className="text-muted-foreground">Z Counter:</span>
+                <span className="text-right font-medium">{lastZData.z_counter}</span>
                 <span className="text-muted-foreground">Invoice Range:</span>
                 <span className="text-right font-medium">{lastZData.beginning_invoice} - {lastZData.ending_invoice}</span>
                 <Separator className="col-span-2 my-2" />
                 
-                <span className="text-muted-foreground font-bold">Today's Sales:</span>
+                <span className="text-muted-foreground">Sales:</span>
+                <span className="text-right font-medium">₱ {Number(lastZData.sales_total || 0).toFixed(2)}</span>
+                <span className="text-muted-foreground">Voids ({lastZData.void_count || 0}):</span>
+                <span className="text-right font-medium text-destructive">(₱ {Number(lastZData.void_total || 0).toFixed(2)})</span>
+                <span className="text-muted-foreground font-bold">Net Sales:</span>
                 <span className="text-right font-bold text-primary">₱ {parseFloat(lastZData.total_sales).toFixed(2)}</span>
                 
                 <Separator className="col-span-2 my-2" />
@@ -361,6 +385,8 @@ export default function SettingsPage() {
                 </div>
 
                 <Separator className="col-span-2 my-2" />
+                <span className="text-muted-foreground">Beginning Grand Total:</span>
+                <span className="text-right font-medium">₱ {Number(lastZData.beginning_grand_total || 0).toFixed(2)}</span>
                 <span className="text-muted-foreground font-bold">New Grand Total:</span>
                 <span className="text-right font-bold text-destructive">₱ {parseFloat(lastZData.accumulated_grand_total).toFixed(2)}</span>
               </div>

@@ -68,16 +68,17 @@ export function convertParams(sql: string, params?: any[]): { sql: string; param
   // 3. Replace NOW() with datetime('now')
   converted = converted.replace(/\bNOW\(\)/gi, "datetime('now')")
 
-  // 5. Replace EXTRACT(DOW FROM col) -> CAST(strftime('%w', col) AS INTEGER)
+  // 5. Replace EXTRACT(DOW FROM col) -> CAST(strftime('%w', col, 'localtime') AS INTEGER)
+  // Stored timestamps are UTC; 'localtime' matches PG's timestamptz EXTRACT in the session time zone
   converted = converted.replace(
     /EXTRACT\s*\(\s*DOW\s+FROM\s+([^)]+)\)/gi,
-    "CAST(strftime('%w', $1) AS INTEGER)"
+    "CAST(strftime('%w', $1, 'localtime') AS INTEGER)"
   )
 
-  // 6. Replace EXTRACT(HOUR FROM col) -> CAST(strftime('%H', col) AS INTEGER)
+  // 6. Replace EXTRACT(HOUR FROM col) -> CAST(strftime('%H', col, 'localtime') AS INTEGER)
   converted = converted.replace(
     /EXTRACT\s*\(\s*HOUR\s+FROM\s+([^)]+)\)/gi,
-    "CAST(strftime('%H', $1) AS INTEGER)"
+    "CAST(strftime('%H', $1, 'localtime') AS INTEGER)"
   )
 
   // 7. Replace INTERVAL 'N days/hours/etc' patterns
@@ -103,7 +104,23 @@ export function convertParams(sql: string, params?: any[]): { sql: string; param
   converted = converted.replace(/\bTRUE\b/g, "1")
   converted = converted.replace(/\bFALSE\b/g, "0")
 
-  return { sql: converted, params: hasParams ? expandedParams : (params || []) }
+  // 11. Bind JS booleans as 1/0 (better-sqlite3 rejects booleans; pg accepted them)
+  const finalParams = (hasParams ? expandedParams : (params || [])).map((p) =>
+    typeof p === "boolean" ? (p ? 1 : 0) : p
+  )
+
+  return { sql: converted, params: finalParams }
+}
+
+/**
+ * Normalizes an ISO-8601 string or Date to SQLite's datetime('now') format
+ * ("YYYY-MM-DD HH:MM:SS", UTC) so text comparisons against created_at work.
+ * Returns the input unchanged if it can't be parsed.
+ */
+export function toDbTimestamp(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value)
+  if (isNaN(date.getTime())) return String(value)
+  return date.toISOString().slice(0, 19).replace("T", " ")
 }
 
 /**

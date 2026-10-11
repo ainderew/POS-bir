@@ -28,13 +28,15 @@ export async function POST(request: Request) {
       }
 
       // 2. Calculate Sales by Payment Method for this shift
+      // Includes sales voided later (VOIDED) and credit notes (REFUND, negative amounts) so a void
+      // made during this shift, even of an earlier shift's sale, reduces the expected drawer
       const salesResult = await client.query(
         `SELECT
             payment_method,
             COALESCE(SUM(net_sales), 0) as total
           FROM transactions
           WHERE created_at >= $1 AND created_at <= CURRENT_TIMESTAMP
-            AND status = 'PAID' AND pos_id = $2
+            AND status IN ('PAID', 'VOIDED', 'REFUND') AND pos_id = $2
           GROUP BY payment_method`,
         [shift.start_time, shift.pos_id || shift.terminal_id]
       )
@@ -80,16 +82,6 @@ export async function POST(request: Request) {
       // Total variance across all accounts
       const totalVariance = cashVariance + gcashVariance + mayaVariance + cardVariance
 
-      // 5. Calculate shift's net sales for terminal update
-      const shiftTotalResult = await client.query(
-        `SELECT COALESCE(SUM(net_sales), 0) as total
-         FROM transactions
-         WHERE created_at >= $1 AND created_at <= CURRENT_TIMESTAMP
-           AND status = 'PAID' AND pos_id = $2`,
-        [shift.start_time, shift.pos_id || shift.terminal_id]
-      )
-      const shiftNetSales = parseFloat(shiftTotalResult.rows[0].total)
-
       // 6. Close Shift with Audit Data
       const updatedShift = await client.query(
         `UPDATE shifts
@@ -115,16 +107,26 @@ export async function POST(request: Request) {
         ]
       )
 
-      // 7. Update Terminal Counters (if terminal_id exists)
+      // 7. Close terminal and snapshot its counters (if terminal_id exists).
+      //    The grand total and Z counter only advance on Z-reading
+      //    (app/api/reports/z-reading), so a shift close must not add to them.
+      let terminalSnapshot: { z_counter: number; accumulated_grand_total: number } | null = null
       if (shift.terminal_id) {
-        await client.query(
+        const terminalResult = await client.query(
           `UPDATE terminals
-           SET accumulated_grand_total = accumulated_grand_total + $1,
-               current_state = 'CLOSED',
+           SET current_state = 'CLOSED',
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $2`,
-          [shiftNetSales, shift.terminal_id]
+           WHERE id = $1
+           RETURNING last_z_counter, accumulated_grand_total`,
+          [shift.terminal_id]
         )
+        const terminal = terminalResult.rows[0]
+        if (terminal) {
+          terminalSnapshot = {
+            z_counter: Number(terminal.last_z_counter),
+            accumulated_grand_total: parseFloat(terminal.accumulated_grand_total)
+          }
+        }
       }
 
       // 8. Convert audit image to BYTEA
@@ -154,6 +156,8 @@ export async function POST(request: Request) {
           imageBuffer,
           JSON.stringify({
             ...auditMetadata,
+            closing_z_counter: terminalSnapshot?.z_counter ?? null,
+            closing_accumulated_total: terminalSnapshot?.accumulated_grand_total ?? null,
             variance: {
               cash: cashVariance,
               gcash: gcashVariance,

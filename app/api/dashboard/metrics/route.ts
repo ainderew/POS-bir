@@ -1,6 +1,6 @@
 
 import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
+import { query, toDbTimestamp } from "@/lib/db"
 import { startOfDay, subDays, differenceInMilliseconds, subMilliseconds } from "date-fns"
 
 export async function GET(request: Request) {
@@ -29,6 +29,9 @@ export async function GET(request: Request) {
       previousStart = subMilliseconds(start, duration).toISOString()
     }
 
+    // Stored timestamps are "YYYY-MM-DD HH:MM:SS" (UTC) text, so every bound
+    // timestamp param goes through toDbTimestamp() for text comparison to work.
+
     // 1. Pulse Metrics
     const salesData = await query(
       `
@@ -38,7 +41,7 @@ export async function GET(request: Request) {
       FROM transactions 
       WHERE status = 'PAID'
       `,
-      [currentStart, currentEnd, previousStart]
+      [toDbTimestamp(currentStart), toDbTimestamp(currentEnd), toDbTimestamp(previousStart)]
     )
 
     const currentSales = parseFloat(salesData[0].current_sales || 0)
@@ -69,7 +72,7 @@ export async function GET(request: Request) {
           SELECT SUM(t.net_sales)
           FROM transactions t
           JOIN shifts s ON t.pos_id = s.pos_id AND t.created_at >= s.start_time
-          WHERE s.status = 'OPEN' AND t.payment_method = 'CASH' AND t.status = 'PAID'
+          WHERE s.status = 'OPEN' AND t.payment_method = 'CASH' AND t.status IN ('PAID', 'VOIDED', 'REFUND') -- same as shift close: voids/credit notes net out
         ), 0) +
         COALESCE((
           SELECT SUM(cm.amount)
@@ -98,7 +101,7 @@ export async function GET(request: Request) {
         (SELECT COUNT(*) FROM shifts WHERE status = 'CLOSED' AND end_time >= $1 AND end_time <= $2 AND ABS(variance) > 100)
       as alert_count
       `,
-      [currentStart, currentEnd]
+      [toDbTimestamp(currentStart), toDbTimestamp(currentEnd)]
     )
     const activeAlerts = parseInt(alertsData[0].alert_count || 0)
 
@@ -107,22 +110,33 @@ export async function GET(request: Request) {
     const riskStart = startDateParam || subDays(today, 30).toISOString()
     const riskEnd = endDateParam || new Date().toISOString()
 
+    // Voids and shifts are aggregated separately: joining both to users in one
+    // query multiplies each shift's variance by the user's void count.
     const staffRiskData = await query(
       `
       SELECT 
         u.id as cashier_id,
         u.full_name as name,
-        COALESCE(COUNT(DISTINCT v.id), 0) as void_count,
-        COALESCE(SUM(ABS(s.variance)), 0) as cash_variance
+        COALESCE(v.void_count, 0) as void_count,
+        COALESCE(s.cash_variance, 0) as cash_variance
       FROM users u
-      LEFT JOIN voids v ON v.cashier_id = u.id AND v.occurred_at >= $1 AND v.occurred_at <= $2
-      LEFT JOIN shifts s ON s.user_id = u.id AND s.status = 'CLOSED' AND s.end_time >= $1 AND s.end_time <= $2
+      LEFT JOIN (
+        SELECT cashier_id, COUNT(*) as void_count
+        FROM voids
+        WHERE occurred_at >= $1 AND occurred_at <= $2
+        GROUP BY cashier_id
+      ) v ON v.cashier_id = u.id
+      LEFT JOIN (
+        SELECT user_id, SUM(ABS(variance)) as cash_variance
+        FROM shifts
+        WHERE status = 'CLOSED' AND end_time >= $1 AND end_time <= $2
+        GROUP BY user_id
+      ) s ON s.user_id = u.id
       WHERE u.role IN ('CASHIER', 'MANAGER', 'ADMIN', 'OWNER')
-      GROUP BY u.id, u.full_name
-      ORDER BY (COALESCE(COUNT(DISTINCT v.id), 0) * 10 + COALESCE(SUM(ABS(s.variance)), 0)) DESC
+      ORDER BY (COALESCE(v.void_count, 0) * 10 + COALESCE(s.cash_variance, 0)) DESC
       LIMIT 5
       `,
-      [riskStart, riskEnd]
+      [toDbTimestamp(riskStart), toDbTimestamp(riskEnd)]
     )
 
     const staffRisk = staffRiskData.map((row: any) => ({
@@ -170,7 +184,7 @@ export async function GET(request: Request) {
       ORDER BY revenue DESC
       LIMIT 5
       `,
-      [riskStart, riskEnd]
+      [toDbTimestamp(riskStart), toDbTimestamp(riskEnd)]
     )
 
     const topProducts = topProductsData.map((row: any) => ({

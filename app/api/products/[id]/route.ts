@@ -2,6 +2,16 @@ import { NextResponse } from "next/server"
 import { query, queryOne } from "@/lib/db"
 import type { Product } from "@/lib/types"
 
+const isBlank = (value: unknown) => value === undefined || value === null || value === ""
+
+// Returns the value as a finite, non-negative number, or NaN if it isn't one
+function toNonNegativeNumber(value: unknown): number {
+  if (typeof value !== "number" && typeof value !== "string") return NaN
+  if (typeof value === "string" && value.trim() === "") return NaN
+  const num = Number(value)
+  return Number.isFinite(num) && num >= 0 ? num : NaN
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
@@ -29,42 +39,59 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params
     const updates = await request.json()
 
+    // stock_level is intentionally not updatable here: the form's value is stale once
+    // sales happen, so stock changes go through /api/products/[id]/stock instead.
     const {
       name,
       barcode,
       selling_price,
       cost_price,
-      stock_level,
       unit_type,
       low_stock_threshold,
       notify_low_stock,
       category_id,
       tax_category,
       supplier_type,
+      wholesale_price,
+      wholesale_threshold,
     } = updates
+
+    if (!name || isBlank(selling_price) || isBlank(cost_price) || !unit_type) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    const sellingPrice = toNonNegativeNumber(selling_price)
+    const costPrice = toNonNegativeNumber(cost_price)
+    const wholesalePrice = isBlank(wholesale_price) ? null : toNonNegativeNumber(wholesale_price)
+    const wholesaleThreshold = isBlank(wholesale_threshold) ? 0 : toNonNegativeNumber(wholesale_threshold)
+
+    if ([sellingPrice, costPrice, wholesalePrice, wholesaleThreshold].some(Number.isNaN)) {
+      return NextResponse.json({ error: "Prices must be non-negative numbers" }, { status: 400 })
+    }
 
     const updatedProduct = await query<Product>(
       `UPDATE products 
        SET name = $1, barcode = $2, selling_price = $3, cost_price = $4, 
-           stock_level = $5, unit_type = $6, low_stock_threshold = $7, 
-           notify_low_stock = $8, category_id = $9, tax_category = $10,
-           supplier_type = $11,
+           unit_type = $5, low_stock_threshold = $6, 
+           notify_low_stock = $7, category_id = $8, tax_category = $9,
+           supplier_type = $10, wholesale_price = $11, wholesale_threshold = $12,
            is_synced = FALSE,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $12
+       WHERE id = $13
        RETURNING *`,
       [
         name,
         barcode || null,
-        selling_price,
-        cost_price,
-        stock_level,
+        sellingPrice,
+        costPrice,
         unit_type,
-        low_stock_threshold,
-        notify_low_stock,
+        low_stock_threshold || 0,
+        notify_low_stock || false,
         category_id || null,
         tax_category || 'VATABLE',
         supplier_type || 'WHOLESALER',
+        wholesalePrice,
+        wholesaleThreshold,
         id,
       ],
     )

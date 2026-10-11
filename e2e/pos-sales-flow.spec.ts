@@ -56,6 +56,11 @@ test.describe('POS & Inventory E2E', () => {
         await route.fulfill({ json: { invoice_number: 'INV-001', net_sales: 50.00 } });
     });
 
+    // useTerminal validates the seeded ID; without this a real DB returns 404 and redirects to /register
+    await page.route('*/**/api/terminals/term-1', async route => {
+        await route.fulfill({ json: { id: 'term-1', current_state: 'OPEN' } });
+    });
+
     // Seed LocalStorage with Terminal ID
     await page.addInitScript(() => {
         localStorage.setItem('pos_terminal_id', 'term-1');

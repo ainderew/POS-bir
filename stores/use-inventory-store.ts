@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { Product } from '@/lib/types';
+import { toast } from 'sonner';
+import type { Product } from '@/lib/types';
 
 interface InventoryState {
   isRestockModalOpen: boolean;
@@ -13,7 +14,8 @@ interface InventoryState {
   setActiveProduct: (product: Product | null) => void;
   setScannedBarcode: (barcode: string | null) => void;
   
-  handleScan: (barcode: string) => Promise<void>;
+  /** Resolves true once the lookup completed (found or not found), false if it failed. */
+  handleScan: (barcode: string) => Promise<boolean>;
   closeModals: () => void;
 }
 
@@ -33,9 +35,15 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         // 1. Check if product exists
         // Note: For a "Scan-First" architecture to be truly snappy, we ideally want a local cache 
         // of all barcodes. For now, we fetch from API.
-        const res = await fetch(`/api/products?search=${barcode}`);
-        const data = await res.json();
-        
+        const res = await fetch(`/api/products?search=${encodeURIComponent(barcode)}`);
+        const data = res.ok ? await res.json() : null;
+
+        // A server error is not "barcode not found" - don't open the Add Product modal for it
+        if (!Array.isArray(data)) {
+            toast.error("Failed to look up product. Please try again.");
+            return false;
+        }
+
         // Exact Match Logic
         const exactMatch = data.find((p: Product) => p.barcode === barcode);
 
@@ -58,8 +66,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
             });
             // playSound('new_item'); // Handled by Global Handler
         }
+        return true;
     } catch (error) {
         console.error("Scan Error", error);
+        toast.error("Failed to look up product. Please try again.");
+        return false;
     }
   },
 

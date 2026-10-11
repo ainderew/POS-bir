@@ -5,10 +5,14 @@ import { query, transaction } from "@/lib/db"
 export async function GET() {
   try {
     const result = await query("SELECT key, value FROM settings")
-    const settings: Record<string, string> = {}
+    const settings: Record<string, string | boolean> = {}
     result.forEach((row) => {
       settings[row.key] = row.value
     })
+    // Never expose the manager PIN (hash or legacy plaintext) to clients.
+    // Re-posting it would get it hashed again and lock out verify-pin.
+    settings.has_manager_pin = Boolean(settings.manager_pin)
+    delete settings.manager_pin
     return NextResponse.json(settings)
   } catch (error) {
     console.error("[v0] Error fetching settings:", error)
@@ -28,10 +32,15 @@ export async function POST(request: Request) {
       auto_print
     } = body
 
-    // Hash manager PIN before storing (if provided)
+    // Hash manager PIN before storing, only when a new PIN is supplied.
+    // Blank/omitted keeps the current PIN.
     let hashedPin: string | undefined
-    if (manager_pin !== undefined && manager_pin !== "") {
-      hashedPin = await bcrypt.hash(manager_pin.toString(), 10)
+    if (manager_pin !== undefined && manager_pin !== null && manager_pin !== "") {
+      const newPin = String(manager_pin)
+      if (!/^\d{4,6}$/.test(newPin)) {
+        return NextResponse.json({ error: "Manager PIN must be 4-6 digits" }, { status: 400 })
+      }
+      hashedPin = await bcrypt.hash(newPin, 10)
     }
 
     await transaction(async (client) => {

@@ -325,13 +325,11 @@ export function ProductForm({ product, categories, onSuccess, onCancel, onCatego
                          // Close the form first
                          onCancel()
                          
-                         // Open Quick Restock Modal properly via store
-                         // We need to set the state directly or use the handleScan simulation
-                         // Ideally we should have an explicit 'openRestockFor(product)' action
-                         // but for now, we can manually set the state as we are in a trusted component
+                         // Open Quick Restock Modal via the store (set the product before opening)
                          setTimeout(() => {
-                             useInventoryStore.getState().setRestockModalOpen(true)
-                             useInventoryStore.getState().activeProduct = product as any // Type casting as quick fix or update store type
+                             const { setActiveProduct, setRestockModalOpen } = useInventoryStore.getState()
+                             setActiveProduct(product)
+                             setRestockModalOpen(true)
                          }, 100)
                      }}>
                          Restock

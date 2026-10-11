@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
+import { query, toDbTimestamp } from "@/lib/db"
 
 export async function GET(
   request: Request,
@@ -24,12 +24,12 @@ export async function GET(
     const sqlParams: any[] = [customerId]
     
     if (start) {
-        sqlParams.push(start)
+        sqlParams.push(toDbTimestamp(start))
         sql += ` AND cl.occurred_at >= $${sqlParams.length}`
     }
     
     if (end) {
-        sqlParams.push(end)
+        sqlParams.push(toDbTimestamp(end))
         sql += ` AND cl.occurred_at <= $${sqlParams.length}`
     }
     

@@ -134,7 +134,7 @@ export interface ProductReport {
 export interface Settings {
   accumulated_grand_total: number
   next_invoice_number: number
-  manager_pin: string
+  has_manager_pin?: boolean // GET /api/settings never returns the PIN hash itself
   business_name: string
   business_address: string
   business_tin: string
@@ -198,6 +198,7 @@ export interface AuditLog {
 export interface Shift {
   id: string
   pos_id: string
+  cashier_name?: string | null // joined from users by GET /api/shifts/current
   status: "OPEN" | "CLOSED"
   start_time: Date
   end_time?: Date

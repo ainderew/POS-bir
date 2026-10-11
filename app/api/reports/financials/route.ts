@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
+import { query, toDbTimestamp } from "@/lib/db"
 import type { FinancialReport, ProductReport } from "@/lib/types"
 
 export async function GET(request: Request) {
@@ -8,16 +8,17 @@ export async function GET(request: Request) {
     const startDate = searchParams.get("startDate")
     const endDate = searchParams.get("endDate")
 
+    // created_at is stored as "YYYY-MM-DD HH:MM:SS" (UTC); normalize ISO params to match
     const params: any[] = []
     const conditions: string[] = ["t.status = 'PAID'"]
 
     if (startDate) {
-      params.push(startDate)
+      params.push(toDbTimestamp(startDate))
       conditions.push(`t.created_at >= $${params.length}::timestamp`)
     }
 
     if (endDate) {
-      params.push(endDate)
+      params.push(toDbTimestamp(endDate))
       conditions.push(`t.created_at <= $${params.length}::timestamp`)
     }
 

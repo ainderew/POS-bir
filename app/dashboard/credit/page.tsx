@@ -1,12 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { CreditStats as CreditStatsType } from "@/lib/credit-types"
+import type { CreditStats as CreditStatsType } from "@/lib/credit-types"
 import { CreditStatsCard } from "@/components/credit/credit-stats"
 import { CreditTable } from "@/components/credit/credit-table"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { toast } from "sonner"
 
 export default function CreditDashboardPage() {
   const [stats, setStats] = useState<CreditStatsType | null>(null)
@@ -15,10 +16,15 @@ export default function CreditDashboardPage() {
   const fetchStats = async () => {
     try {
       const res = await fetch("/api/dashboard/credit-stats")
-      const data = await res.json()
+      const data = await res.json().catch(() => null)
+      // Only accept a well-formed payload; on error keep the last good stats
+      if (!res.ok || typeof data?.totalReceivables !== "number" || typeof data?.overdueAmount !== "number") {
+        throw new Error(data?.error || `Credit stats request failed (${res.status})`)
+      }
       setStats(data)
     } catch (error) {
       console.error("Failed to fetch stats", error)
+      toast.error("Failed to load credit stats")
     } finally {
       setIsLoading(false)
     }

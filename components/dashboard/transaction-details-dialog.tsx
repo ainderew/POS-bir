@@ -55,8 +55,10 @@ export function TransactionDetailsDialog({ transactionId, isOpen, onClose, onVoi
     setIsVoidModalOpen(true)
   }
 
-  const handleVoidAuthorized = async (authData: { managerId: string, pin: string, reason: string, auditImageBase64: string | null }) => {
+  const handleVoidAuthorized = async (authData: { managerId: string, managerName: string, pin: string, reason: string, auditImageBase64: string | null }) => {
     if (!transaction) return
+
+    const { managerName, ...voidPayload } = authData
 
     try {
       const res = await fetch("/api/transactions/void", {
@@ -64,7 +66,7 @@ export function TransactionDetailsDialog({ transactionId, isOpen, onClose, onVoi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           originalTransactionId: transaction.id,
-          ...authData
+          ...voidPayload
         })
       })
 
@@ -78,11 +80,11 @@ export function TransactionDetailsDialog({ transactionId, isOpen, onClose, onVoi
       
       // Auto-Print Void Slip
       try {
-        await printVoidSlip(transaction, data.transaction, authData.managerId, authData.reason) // Ideally pass Manager Name if available, or fetch it
-        toast.info("Printing void slip...")
-      } catch (printErr) {
+        const printResult = await printVoidSlip(transaction, data.transaction, managerName, authData.reason)
+        if (printResult.success) toast.info("Void slip sent to printer")
+      } catch (printErr: any) {
         console.error("Print Error", printErr)
-        toast.error("Failed to print void slip")
+        toast.error(`Failed to print void slip: ${printErr?.message || "unknown error"}`)
       }
 
       // Refresh data

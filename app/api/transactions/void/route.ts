@@ -5,6 +5,15 @@ import { queryOne, transaction, getPosId } from "@/lib/db"
 import { dataUrlToBase64 } from "@/lib/audit-service"
 import bcrypt from "bcryptjs"
 
+// Errors the client caused (bad state / unknown id); anything else is a 500.
+class VoidRequestError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -49,56 +58,42 @@ export async function POST(request: Request) {
       )
 
       if (originalRes.rows.length === 0) {
-        throw new Error("Transaction not found")
+        throw new VoidRequestError("Transaction not found", 404)
       }
 
       const originalTx = originalRes.rows[0]
 
+      // Only an original sale can be voided. Credit notes (status REFUND,
+      // transaction_type VOID_REFUND) and already-voided sales cannot.
       if (originalTx.status === 'VOIDED') {
-        throw new Error("Transaction is already voided")
+        throw new VoidRequestError("Transaction is already voided", 400)
+      }
+      if (originalTx.status !== 'PAID' || originalTx.transaction_type === 'VOID_REFUND') {
+        throw new VoidRequestError("Only completed sales can be voided", 400)
       }
 
       const posId = getPosId()
-      
-      // Get next Invoice Number for the reversal (it's a new transaction)
-      // Note: Reversals usually get a new sequence or share the old one with a suffix?
-      // BIR usually requires a "Voided" status on the original and a "New" transaction if it's a correction, 
-      // OR just marking the original as void.
-      // The prompt says: "Create Reversal Transaction: Insert a new row ... total_amount: Negative ... type: 'VOID_REFUND'"
-      // The `transactions` table doesn't have a `type` column in 004 schema, only `status` ('PAID', 'VOIDED').
-      // But prompt says "Add column status (ENUM): 'COMPLETED', 'VOIDED'". 
-      // And "Create Reversal Transaction... type: 'VOID_REFUND'".
-      // This implies I might need a `type` column or reuse `status`.
-      // If `status` is the only enum, maybe `payment_method` is abused? Or I missed adding `type`.
-      // The prompt "Part 2" only mentions adding `status`, `void_reason` etc. 
-      // But Part 4B says "type: 'VOID_REFUND'".
-      // I will assume `status` 'VOIDED' is for the original, and the new one might have a status of 'PAID' (completed reversal) 
-      // but with negative amounts?
-      // Or maybe I should add a `type` column.
-      // Given strictly "Add column status...", I'll stick to that. 
-      // I'll create the reversal transaction with negative values and status 'PAID' (it is a valid negative transaction).
-      // Or maybe status 'VOID_REFUND' if I add it to the enum.
-      // I'll check the prompt "type: 'VOID_REFUND'". It looks like I missed adding a `type` column in Part 2 instructions?
-      // "Update transactions table: Add column status... Add column void_reason...". 
-      // It DOES NOT explicitely say "Add column type".
-      // However, Part 4B explicitly says "type: 'VOID_REFUND'".
-      // I will assume this is a new column or I should infer it.
-      // I'll add `transaction_type` column to be safe in `scripts/005_init_voids.sql`.
-      
-      // ... Wait, I can't modify the script easily while inside this thought.
-      // I'll assume I should just use `payment_method` or `status` if `type` isn't there, 
-      // BUT for correctness, I'll add `transaction_type` to the script in a subsequent edit if needed.
-      // For now, I'll assume "type" meant "Logic type" and I'll represent it by negative values and maybe a specific status or metadata.
-      // But prompt says "Insert a new row ... type: 'VOID_REFUND'". This looks like a column assignment.
-      
-      // Let's create the Reversal Transaction with negative amounts.
-      // Generate new invoice number
-      const invoiceResult = await client.query(
-        "UPDATE settings SET value = (value::int + 1)::text WHERE key = 'next_invoice_number' RETURNING value"
+
+      // Credit notes have their own series (CN-000001, CN-000002, ...) and never
+      // consume the sales invoice (SI) sequence. The setting holds the next number
+      // to issue. Installs created before the key existed continue after the
+      // highest CN already issued (those were numbered from the SI sequence).
+      const cnSetting = await client.query(
+        "SELECT value FROM settings WHERE key = 'next_credit_note_number'"
       )
-      const invoiceSeq = invoiceResult.rows[0].value.padStart(6, '0')
-      const invoiceNumber = `CN-${invoiceSeq}` // Credit Note? Or just SI? BIR usually wants sequential.
-      // Prompt doesn't specify invoice format for void. I'll use standard sequence.
+      if (cnSetting.rows.length === 0) {
+        await client.query(
+          `INSERT INTO settings (key, value)
+           SELECT 'next_credit_note_number',
+                  CAST(COALESCE(MAX(CAST(SUBSTR(invoice_number, 4) AS INTEGER)), 0) + 1 AS TEXT)
+           FROM transactions WHERE invoice_number LIKE 'CN-%'`
+        )
+      }
+      const cnResult = await client.query(
+        "UPDATE settings SET value = (value::int + 1)::text WHERE key = 'next_credit_note_number' RETURNING value"
+      )
+      const cnSeq = String(Number(cnResult.rows[0].value) - 1).padStart(6, '0')
+      const invoiceNumber = `CN-${cnSeq}`
 
       const reversalTx = await client.query(
         `INSERT INTO transactions (
@@ -143,6 +138,51 @@ export async function POST(request: Request) {
         [reason, managerId, originalTransactionId]
       )
 
+      // Restore stock for every item on the voided sale
+      const itemsRes = await client.query(
+        "SELECT product_id, quantity_sold FROM transaction_items WHERE transaction_id = $1",
+        [originalTransactionId]
+      )
+      for (const item of itemsRes.rows) {
+        await client.query(
+          `UPDATE products
+           SET stock_level = stock_level + $1, is_synced = FALSE, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2`,
+          [item.quantity_sold, item.product_id]
+        )
+      }
+
+      // Reverse the store-credit charge (customer id is the sale's reference_number)
+      if (originalTx.payment_method === "STORE_CREDIT" && originalTx.reference_number) {
+        const customerId = originalTx.reference_number
+        const amount = Number(originalTx.net_sales)
+
+        const updateCustomer = await client.query(
+          `UPDATE customers
+           SET current_debt_balance = ROUND(current_debt_balance - $1, 2),
+               total_spend = ROUND(total_spend - $1, 2),
+               updated_at = NOW()
+           WHERE id = $2
+           RETURNING current_debt_balance`,
+          [amount, customerId]
+        )
+        if (updateCustomer.rows.length === 0) {
+          throw new Error("Customer for store credit sale not found")
+        }
+        const newBalance = Number(updateCustomer.rows[0].current_debt_balance)
+
+        await client.query(
+          `INSERT INTO credit_ledger (
+              id, customer_id, transaction_id, entry_type, amount, running_balance, notes, pos_id
+          ) VALUES ($1, $2, $3, 'ADJUSTMENT', $4, $5, $6, $7)`,
+          [
+            crypto.randomUUID(), customerId, reversalTx.rows[0].id, amount, newBalance,
+            `Void of ${originalTx.invoice_number} (${invoiceNumber})${reason ? `: ${reason}` : ''}`,
+            posId
+          ]
+        )
+      }
+
       // Log Audit
       const imageBuffer = auditImageBase64 
         ? Buffer.from(dataUrlToBase64(auditImageBase64), 'base64') 
@@ -179,6 +219,7 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error("[v0] Void Transaction Error:", error)
-    return NextResponse.json({ error: error.message || "Failed to void transaction" }, { status: 500 })
+    const status = error instanceof VoidRequestError ? error.status : 500
+    return NextResponse.json({ error: error.message || "Failed to void transaction" }, { status })
   }
 }

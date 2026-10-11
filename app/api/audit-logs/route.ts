@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
+import { query, toDbTimestamp } from "@/lib/db"
 
 export async function GET(request: Request) {
   try {
@@ -25,18 +25,19 @@ export async function GET(request: Request) {
       LEFT JOIN shifts s ON a.shift_id = s.id
       WHERE 1=1
     `
+    // created_at is stored as "YYYY-MM-DD HH:MM:SS" (UTC); normalize ISO params to match
     const params: any[] = []
     let paramIndex = 1
 
     if (startDate) {
       sql += ` AND a.created_at >= $${paramIndex}`
-      params.push(startDate)
+      params.push(toDbTimestamp(startDate))
       paramIndex++
     }
 
     if (endDate) {
       sql += ` AND a.created_at <= $${paramIndex}`
-      params.push(endDate)
+      params.push(toDbTimestamp(endDate))
       paramIndex++
     }
 

@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { RiskBarChart } from "./risk-bar-chart"
 import { SalesHeatmap } from "./sales-heatmap"
 import { TopProductsChart } from "./top-products-chart"
@@ -30,50 +30,56 @@ export function ExecutiveDashboard({ dateRange }: ExecutiveDashboardProps) {
   // In a real app, this might come from a context or a separate hook
   const [activeShiftId, setActiveShiftId] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        const params = new URLSearchParams()
-        if (dateRange?.from) {
-          params.append("startDate", startOfDay(dateRange.from).toISOString())
-        }
-        if (dateRange?.to) {
-          params.append("endDate", endOfDay(dateRange.to).toISOString())
-        }
-
-        const res = await fetch(`/api/dashboard/metrics?${params.toString()}`)
-        if (res.ok) {
-          const data = await res.json()
-          setMetrics(data)
-        }
-        
-        // Fetch active shift for Drop Cash function
-        const shiftRes = await fetch("/api/shifts/current")
-        if (shiftRes.ok) {
-          const shift = await shiftRes.json()
-          if (shift) setActiveShiftId(shift.id)
-        }
-      } catch (error) {
-        console.error("Failed to load executive metrics", error)
-        toast.error("Failed to load business intelligence data")
-      } finally {
-        setLoading(false)
+  // Shared by the initial load, the 30s refresh and post-Drop-Cash refresh so
+  // all of them respect the active date filter
+  const fetchMetrics = useCallback(async () => {
+    try {
+      const params = new URLSearchParams()
+      if (dateRange?.from) {
+        params.append("startDate", startOfDay(dateRange.from).toISOString())
       }
-    }
+      if (dateRange?.to) {
+        params.append("endDate", endOfDay(dateRange.to).toISOString())
+      }
 
+      const res = await fetch(`/api/dashboard/metrics?${params.toString()}`)
+      const data = await res.json().catch(() => null)
+      if (res.ok && typeof data?.pulse?.cash_exposure === "number") {
+        setMetrics(data)
+      } else {
+        // Keep the last good metrics on screen; id dedupes repeat toasts from the interval
+        console.error("Failed to load executive metrics", res.status, data?.error)
+        toast.error("Failed to load business intelligence data", { id: "executive-metrics-error" })
+      }
+      
+      // Fetch active shift for Drop Cash function
+      const shiftRes = await fetch("/api/shifts/current")
+      if (shiftRes.ok) {
+        const shift = await shiftRes.json()
+        if (shift) setActiveShiftId(shift.id)
+      }
+    } catch (error) {
+      console.error("Failed to load executive metrics", error)
+      toast.error("Failed to load business intelligence data", { id: "executive-metrics-error" })
+    } finally {
+      setLoading(false)
+    }
+  }, [dateRange])
+
+  useEffect(() => {
     fetchMetrics()
     
     // Refresh every 30 seconds for "Real-time" feel
     const interval = setInterval(fetchMetrics, 30000)
     return () => clearInterval(interval)
-  }, [dateRange])
+  }, [fetchMetrics])
 
   const handleCashMovementSuccess = () => {
     setIsDropCashOpen(false)
     toast.success("Cash dropped successfully")
-    // Re-fetch metrics immediately
-    setLoading(true) // Show subtle loading state? Or just silent refresh.
-    fetch("/api/dashboard/metrics").then(r => r.json()).then(setMetrics).finally(() => setLoading(false))
+    // Re-fetch metrics immediately (same params as the current view)
+    setLoading(true)
+    fetchMetrics()
   }
 
   const handleDropCashClick = () => {

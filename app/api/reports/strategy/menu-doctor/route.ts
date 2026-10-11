@@ -22,8 +22,14 @@ export async function GET() {
           p.stock_level,
           p.cost_price
         FROM products p
-        LEFT JOIN transaction_items ti ON p.id = ti.product_id
-        LEFT JOIN transactions t ON ti.transaction_id = t.id AND t.status = 'PAID' AND t.created_at >= NOW() - INTERVAL '30 days'
+        -- Filter sales BEFORE the LEFT JOIN so voided/old items are excluded
+        -- while products with no qualifying sales still appear (with zeros)
+        LEFT JOIN (
+          SELECT ti.product_id, ti.quantity_sold, ti.price_at_sale, ti.profit
+          FROM transaction_items ti
+          JOIN transactions t ON ti.transaction_id = t.id
+          WHERE t.status = 'PAID' AND t.created_at >= NOW() - INTERVAL '30 days'
+        ) ti ON p.id = ti.product_id
         GROUP BY p.id, p.name, p.supplier_type, p.stock_level, p.cost_price
       ),
       StoreStats AS (

@@ -1,41 +1,68 @@
-
+import type { PrintResult, VoidSlipPayload } from "./electron"
 import type { Transaction, TransactionItem } from "./types"
+import { lessVatOf } from "./ph-tax"
 
+/**
+ * Print the void slip for a reversal through the Electron print bridge.
+ *
+ * Resolves with the PrintResult when the slip was sent to the printer.
+ * Throws an Error (message = printer error) when printing was attempted but
+ * failed, so callers' try/catch can surface it. In web mode (no Electron) it
+ * resolves with success:false without throwing, as printing is unavailable.
+ */
 export async function printVoidSlip(
   originalTransaction: Transaction & { items: TransactionItem[] },
-  voidTransaction: Transaction, // The negative transaction
+  voidTransaction: Transaction, // The negative (reversal) transaction
   managerName: string,
   reason: string
-) {
+): Promise<PrintResult> {
   if (typeof window === "undefined" || !window.electronAPI) {
     console.log("Printing not available (Web Mode)")
-    return
+    return { success: false, error: "Printing not available (web mode)" }
   }
 
-  // Format the void slip content
-  // We use the existing printReceipt interface but formatted for Void
-  // This assumes electronAPI.printReceipt can handle these fields.
-  // If not, we might need to adjust the interface or the main process handler.
-  
-  await window.electronAPI.printReceipt({
-    businessName: "GENERAL STORE POS",
-    address: "VOID SLIP", // Hack to show VOID header if address allows string
-    tin: "VAT REG TIN: 000-000-000-000",
+  // Real business header for the BIR slip; print without it rather than with placeholders.
+  let settings: Record<string, string> = {}
+  try {
+    const res = await fetch("/api/settings")
+    if (res.ok) settings = await res.json()
+  } catch (error) {
+    console.error("[v0] Void slip: failed to load business settings", error)
+  }
+
+  const payload: VoidSlipPayload = {
+    type: "void",
+    businessName: settings.business_name,
+    address: settings.business_address,
+    tin: settings.business_tin,
     invoiceNumber: voidTransaction.invoice_number,
-    items: originalTransaction.items.map(item => ({
-      name: item.product_name || "Item",
-      quantity: -item.quantity_sold, // Show negative
-      price: item.price_at_sale * item.quantity_sold // Show positive price, but quantity is negative implies refund
-    })),
-    vatableSales: voidTransaction.vatable_sales,
-    vatAmount: voidTransaction.vat_amount,
-    vatExemptSales: voidTransaction.vat_exempt_sales,
-    total: voidTransaction.net_sales, // Should be negative
-    
-    // Additional Metadata for Void - passed via a mechanism the printer handler supports
-    // Since I don't see the Electron main process code for printing, I'll rely on the standard fields 
-    // or assume we can pass extra footer lines.
-    // I'll assume 'footerLines' is supported or I'll implement it if I see the main process code.
-    // Checking lib/electron.d.ts might be useful, but for now I'll stick to a safe structure.
-  })
+    originalInvoiceNumber: originalTransaction.invoice_number,
+    reason,
+    authorizedBy: managerName,
+    items: originalTransaction.items.map((item) => {
+      const quantity = Number(item.quantity_sold)
+      const unitPrice = Number(item.price_at_sale)
+      return {
+        name: item.product_name || "Item",
+        quantity: -quantity,
+        unitPrice,
+        lineTotal: -(quantity * unitPrice),
+      }
+    }),
+    // Reversal amounts are already negative.
+    lessVat: lessVatOf(voidTransaction),
+    discount: Number(voidTransaction.total_discount) || undefined,
+    vatableSales: Number(voidTransaction.vatable_sales),
+    vatAmount: Number(voidTransaction.vat_amount),
+    vatExemptSales: Number(voidTransaction.vat_exempt_sales),
+    zeroRatedSales: Number(voidTransaction.zero_rated_sales),
+    total: Number(voidTransaction.net_sales),
+    paymentMethod: originalTransaction.payment_method,
+  }
+
+  const result = await window.electronAPI.printReceipt(payload)
+  if (!result?.success) {
+    throw new Error(result?.error || "Failed to print void slip")
+  }
+  return result
 }

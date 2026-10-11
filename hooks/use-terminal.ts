@@ -4,7 +4,12 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-export function useTerminal() {
+/**
+ * Loads and validates this machine's terminal ID. By default a missing or unknown ID
+ * sends the user to /register; pass { redirectIfMissing: false } on pages that work
+ * without one (terminalId is then null).
+ */
+export function useTerminal({ redirectIfMissing = true }: { redirectIfMissing?: boolean } = {}) {
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
@@ -26,6 +31,7 @@ export function useTerminal() {
       }
 
       if (!id) {
+        if (!redirectIfMissing) return
         console.log("[useTerminal] No terminal ID found. Redirecting to register...")
         router.push("/register")
         return
@@ -34,6 +40,7 @@ export function useTerminal() {
       // 2. Validate terminal ID exists in database
       const res = await fetch(`/api/terminals/${id}`)
       if (res.status === 404) {
+        if (!redirectIfMissing) return
         console.log("[useTerminal] Terminal ID not found in DB. Clearing stale ID...")
         if (window.electronAPI) {
           await window.electronAPI.saveTerminalId("")

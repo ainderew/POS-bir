@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT OR IGNORE INTO settings (key, value) VALUES
 ('accumulated_grand_total', '0.00'),
 ('next_invoice_number', '1'),
+('next_credit_note_number', '1'),
 ('manager_pin', '1234'),
 ('business_name', 'General Store POS'),
 ('business_address', '123 Business St, City'),

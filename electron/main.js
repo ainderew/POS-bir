@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
+const { renderReceiptHtml, resolveReceiptType, validateReceiptPayload } = require('./receipt-template');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // File-based logging for production debugging
@@ -451,9 +452,107 @@ ipcMain.handle('reload-app', () => {
   if (mainWindow) mainWindow.reload();
 });
 
+const PRINT_TIMEOUT_MS = 15000;
+// Chromium rejects URLs over 2MB; stay well under it.
+const MAX_PRINT_URL_LENGTH = 1.5 * 1024 * 1024;
+
+/**
+ * Render `html` in a throwaway hidden window and print it silently.
+ * Always resolves (never rejects) with { success, error? }; the window is
+ * destroyed and the timeout cleared on every path.
+ */
+function printHtmlSilently(html, deviceName) {
+  return new Promise((resolve) => {
+    let win = null;
+    let settled = false;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (win && !win.isDestroyed()) win.destroy();
+      win = null;
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => finish({ success: false, error: 'Print timed out' }), PRINT_TIMEOUT_MS);
+
+    const url = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+    if (url.length > MAX_PRINT_URL_LENGTH) {
+      finish({ success: false, error: 'Receipt is too large to print' });
+      return;
+    }
+
+    try {
+      win = new BrowserWindow({
+        show: false,
+        focusable: false,
+        skipTaskbar: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+        },
+      });
+
+      win.webContents.once('did-finish-load', () => {
+        if (settled || !win || win.isDestroyed()) return;
+        const options = { silent: true, printBackground: false, margins: { marginType: 'none' } };
+        if (deviceName) options.deviceName = deviceName;
+        try {
+          win.webContents.print(options, (success, failureReason) => {
+            finish(success ? { success: true } : { success: false, error: failureReason || 'Print failed' });
+          });
+        } catch (err) {
+          finish({ success: false, error: err.message });
+        }
+      });
+
+      win.webContents.once('render-process-gone', (_e, details) => {
+        finish({ success: false, error: `Receipt renderer exited (${details.reason})` });
+      });
+
+      // Rejects on did-fail-load; resolution is handled by did-finish-load above.
+      win.loadURL(url).catch((err) => {
+        finish({ success: false, error: `Failed to render receipt: ${err.message}` });
+      });
+    } catch (err) {
+      finish({ success: false, error: err.message });
+    }
+  });
+}
+
 ipcMain.handle('print-receipt', async (event, data) => {
-  console.log('Direct printing placeholder...');
-  return { success: true };
+  try {
+    const invalid = validateReceiptPayload(data);
+    if (invalid) {
+      log(`[print] Rejected payload: ${invalid}`);
+      return { success: false, error: invalid };
+    }
+
+    const type = resolveReceiptType(data);
+    const ref = data.invoiceNumber ? String(data.invoiceNumber).replace(/\s+/g, ' ').slice(0, 64) : '-';
+
+    const printers = await event.sender.getPrintersAsync();
+    if (!printers || printers.length === 0) {
+      log(`[print] ${type} ${ref}: no printer found`);
+      return { success: false, error: 'No printer found' };
+    }
+
+    // No printer-name setting exists yet, so no deviceName: the OS default printer is used.
+    log(`[print] ${type} ${ref}: printing to default printer (${printers.length} available)`);
+
+    const result = await printHtmlSilently(renderReceiptHtml(data));
+    if (result.success) {
+      log(`[print] ${type} ${ref}: sent to printer`);
+    } else {
+      log(`[print] ${type} ${ref}: FAILED - ${result.error}`);
+    }
+    return result;
+  } catch (err) {
+    log(`[print] Unexpected error: ${err && err.message}`);
+    return { success: false, error: (err && err.message) || 'Print failed' };
+  }
 });
 
 ipcMain.handle('get-sync-status', () => syncStatus);

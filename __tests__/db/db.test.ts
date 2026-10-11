@@ -7,7 +7,7 @@
  * Tests the database abstraction layer (query, queryOne, transaction)
  * against a real SQLite database.
  */
-import { query, queryOne, transaction, closeDb } from "@/lib/db"
+import { query, queryOne, transaction, closeDb, toDbTimestamp } from "@/lib/db"
 import { ensureSchema } from "./_setup"
 
 // Increase timeout for DB operations
@@ -58,6 +58,51 @@ describe("Database Abstraction Layer", () => {
       const rows = await query("SELECT 123.45 as price")
       expect(typeof rows[0].price).toBe("number")
       expect(rows[0].price).toBe(123.45)
+    })
+
+    it("binds JS booleans as 1/0, including reused $N params", async () => {
+      const rows = await query("SELECT $1 as yes, $2 as no, $1 as again", [true, false])
+      expect(rows[0]).toEqual({ yes: 1, no: 0, again: 1 })
+    })
+
+    it("binds JS booleans inside transaction() client queries", async () => {
+      const result = await transaction(async (client) => {
+        const res = await client.query("SELECT $1 as flag", [true])
+        return res.rows[0].flag
+      })
+      expect(result).toBe(1)
+    })
+  })
+
+  describe("toDbTimestamp()", () => {
+    it("converts ISO strings to SQLite UTC datetime text", () => {
+      expect(toDbTimestamp("2026-10-10T16:00:00.000Z")).toBe("2026-10-10 16:00:00")
+      expect(toDbTimestamp("2026-10-11T00:30:00+08:00")).toBe("2026-10-10 16:30:00")
+      expect(toDbTimestamp(new Date(Date.UTC(2026, 0, 2, 3, 4, 5)))).toBe("2026-01-02 03:04:05")
+    })
+
+    it("EXTRACT(HOUR/DOW) reads UTC-stored timestamps in local time", async () => {
+      const stored = "2026-10-10 23:30:00" // datetime('now') format, UTC
+      const local = new Date("2026-10-10T23:30:00Z")
+      const rows = await query(
+        "SELECT EXTRACT(HOUR FROM $1) as hour, EXTRACT(DOW FROM $1) as dow",
+        [stored]
+      )
+      expect(rows[0]).toEqual({ hour: local.getHours(), dow: local.getDay() })
+    })
+
+    it("returns unparseable input unchanged", () => {
+      expect(toDbTimestamp("not-a-date")).toBe("not-a-date")
+    })
+
+    it("compares correctly against datetime('now')-format rows", async () => {
+      // A sale at 07:30 Manila time (23:30 UTC the previous day) must fall inside "today" (from 16:00 UTC)
+      const rows = await query(
+        "SELECT '2026-10-10 23:30:00' >= $1 as raw_iso, '2026-10-10 23:30:00' >= $2 as normalized",
+        ["2026-10-10T16:00:00.000Z", toDbTimestamp("2026-10-10T16:00:00.000Z")]
+      )
+      expect(rows[0].raw_iso).toBe(0)
+      expect(rows[0].normalized).toBe(1)
     })
   })
 

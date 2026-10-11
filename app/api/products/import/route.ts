@@ -6,6 +6,20 @@ const REQUIRED_FIELDS = ["name", "selling_price", "cost_price", "unit_type"]
 const VALID_UNIT_TYPES = ["QUANTITY", "WEIGHT"]
 const VALID_TAX_CATEGORIES = ["VATABLE", "VAT_EXEMPT", "ZERO_RATED"]
 const VALID_SUPPLIER_TYPES = ["WHOLESALER", "WET_MARKET", "DIRECT_DELIVERY"]
+// Optional CSV column -> products column. Existing products only get the columns present in the header.
+const OPTIONAL_COLUMNS: Record<string, string> = {
+  barcode: "barcode",
+  stock_level: "stock_level",
+  low_stock_threshold: "low_stock_threshold",
+  notify_low_stock: "notify_low_stock",
+  category: "category_id",
+  tax_category: "tax_category",
+  supplier_type: "supplier_type",
+  is_promo: "is_promo",
+  promo_price: "promo_price",
+  wholesale_price: "wholesale_price",
+  wholesale_threshold: "wholesale_threshold",
+}
 
 function parseCsvLine(line: string): string[] {
   const fields: string[] = []
@@ -167,20 +181,25 @@ export async function POST(request: Request) {
             continue
           }
 
+          const optionalValues: Record<string, unknown> = {
+            barcode, stock_level: stockLevel, low_stock_threshold: lowStockThreshold,
+            notify_low_stock: notifyLowStock, category_id: categoryId, tax_category: taxCategory,
+            supplier_type: supplierType, is_promo: isPromo, promo_price: promoPrice,
+            wholesale_price: wholesalePrice, wholesale_threshold: wholesaleThreshold,
+          }
+          const updates: Record<string, unknown> = {
+            name: row.name, selling_price: sellingPrice, cost_price: costPrice, unit_type: unitType,
+          }
+          for (const [header, column] of Object.entries(OPTIONAL_COLUMNS)) {
+            if (headers.includes(header)) updates[column] = optionalValues[column]
+          }
+
+          // Column names come from the fixed lists above; values are parameterized
+          const columns = Object.keys(updates)
           await client.query(
-            `UPDATE products SET
-              name = $1, barcode = $2, selling_price = $3, cost_price = $4,
-              stock_level = $5, unit_type = $6, low_stock_threshold = $7,
-              notify_low_stock = $8, category_id = $9, tax_category = $10,
-              supplier_type = $11, is_promo = $12, promo_price = $13,
-              wholesale_price = $14, wholesale_threshold = $15
-             WHERE id = $16`,
-            [
-              row.name, barcode, sellingPrice, costPrice, stockLevel,
-              unitType, lowStockThreshold, notifyLowStock, categoryId,
-              taxCategory, supplierType, isPromo, promoPrice,
-              wholesalePrice, wholesaleThreshold, existing.id
-            ]
+            `UPDATE products SET ${columns.map((col, idx) => `${col} = $${idx + 1}`).join(", ")}
+             WHERE id = $${columns.length + 1}`,
+            [...Object.values(updates), existing.id]
           )
           results.updated++
         } else {

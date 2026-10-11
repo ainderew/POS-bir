@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { CartItem, Product, Shift } from '@/lib/types';
 import { toast } from 'sonner';
+import { getActivePrice } from '@/lib/ph-tax'; // same pricing rule the sale route applies
 
 interface CartState {
   items: CartItem[];
@@ -10,18 +11,9 @@ interface CartState {
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
+  refreshProducts: (products: Product[]) => void;
   setActiveShift: (shift: Shift | null) => void;
 }
-
-const calculateActivePrice = (product: Product, qty: number) => {
-  const threshold = Number(product.wholesale_threshold) || 0;
-  const wholesalePrice = Number(product.wholesale_price) || 0;
-
-  if (threshold > 0 && qty >= threshold && wholesalePrice > 0) {
-    return wholesalePrice;
-  }
-  return Number(product.selling_price);
-};
 
 export const useCartStore = create<CartState>()(
   persist(
@@ -53,7 +45,7 @@ export const useCartStore = create<CartState>()(
                 ? { 
                     ...item, 
                     quantity: newQuantity,
-                    active_price: calculateActivePrice(item.product, newQuantity)
+                    active_price: getActivePrice(item.product, newQuantity)
                   }
                 : item
             ),
@@ -68,7 +60,7 @@ export const useCartStore = create<CartState>()(
               items: [...items, { 
                 product, 
                 quantity,
-                active_price: calculateActivePrice(product, quantity)
+                active_price: getActivePrice(product, quantity)
               }] 
             });
         }
@@ -88,7 +80,7 @@ export const useCartStore = create<CartState>()(
                   ? { 
                       ...item, 
                       quantity,
-                      active_price: calculateActivePrice(item.product, quantity)
+                      active_price: getActivePrice(item.product, quantity)
                     } 
                   : item
             )
@@ -96,6 +88,18 @@ export const useCartStore = create<CartState>()(
       },
 
       clearCart: () => set({ items: [] }),
+
+      // Replace stale product snapshots (persisted cart) with current server data
+      refreshProducts: (products: Product[]) => {
+        set((state) => ({
+          items: state.items.map((item) => {
+            const fresh = products.find((p) => p.id === item.product.id);
+            return fresh
+              ? { ...item, product: fresh, active_price: getActivePrice(fresh, item.quantity) }
+              : item;
+          }),
+        }));
+      },
       
       setActiveShift: (shift) => set({ activeShift: shift }),
     }),

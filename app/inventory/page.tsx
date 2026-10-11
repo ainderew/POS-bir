@@ -47,8 +47,9 @@ export default function InventoryPage() {
       if (lowStock) params.append("lowStock", "true")
 
       const response = await fetch(`/api/products?${params.toString()}`)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const data = await response.json()
-      setProducts(data)
+      setProducts(Array.isArray(data) ? data : [])
     } catch (error) {
       toast.error("Failed to fetch products")
     }
@@ -57,8 +58,9 @@ export default function InventoryPage() {
   const fetchCategories = async () => {
     try {
       const response = await fetch("/api/categories")
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const data = await response.json()
-      setCategories(data)
+      setCategories(Array.isArray(data) ? data : [])
     } catch (error) {
       toast.error("Failed to fetch categories")
     }

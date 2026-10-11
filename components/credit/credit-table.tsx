@@ -42,7 +42,11 @@ export function CreditTable({ onUpdate }: CreditTableProps) {
         // or just rely on search API if list is huge.
         // Given "High Density", let's fetch all customers and sort client side for this prototype.
         const allRes = await fetch("/api/customers") 
-        const data = await allRes.json()
+        const data = await allRes.json().catch(() => null)
+        // On error keep the last good list instead of crashing on a non-array body
+        if (!allRes.ok || !Array.isArray(data)) {
+            throw new Error(data?.error || `Customers request failed (${allRes.status})`)
+        }
         
         // Filter and Sort: Debt > 0, Highest Balance First
         const debtors = data
@@ -57,6 +61,7 @@ export function CreditTable({ onUpdate }: CreditTableProps) {
         }
     } catch (error) {
         console.error("Failed to fetch customers", error)
+        toast.error("Failed to load customers")
     } finally {
         setIsLoading(false)
     }
@@ -78,6 +83,8 @@ export function CreditTable({ onUpdate }: CreditTableProps) {
               toast.success(`Customer ${newStatus === 'BLOCKED' ? 'Blocked' : 'Unblocked'}`)
               fetchCustomers()
               onUpdate()
+          } else {
+              toast.error("Failed to update status")
           }
       } catch (error) {
           toast.error("Failed to update status")
@@ -90,35 +97,44 @@ export function CreditTable({ onUpdate }: CreditTableProps) {
           const res = await fetch(`/api/customers/${customer.id}/soa`)
           const data = await res.json()
           
-          if (!data.entries) throw new Error("No data")
+          if (!res.ok || !data.entries) throw new Error("No data")
 
           // 2. Format for Printer (Reuse Receipt Format)
           if (typeof window !== "undefined" && window.electronAPI) {
-              const items = data.entries.filter((e: any) => e.entry_type === 'CHARGE').map((e: any) => ({
-                  name: `${new Date(e.occurred_at).toLocaleDateString()} - ${e.invoice_number || 'Charge'}`,
-                  quantity: 1,
-                  price: parseFloat(e.amount)
-              }))
-              
-              // Add payments as negative items? Or just list unpaid charges?
-              // The prompt says "List of unpaid transactions".
-              // My SOA endpoint returns ledger entries.
-              // To match "Balance", we might need to show all recent or just the sum.
-              // For simplicity: Listing all recent charges.
-              
-              await window.electronAPI.printReceipt({
-                  businessName: "GENERAL STORE POS",
-                  address: "Statement of Account",
-                  tin: `Customer: ${customer.full_name}`,
+              // Every ledger entry, oldest first, so the lines add up to the balance due:
+              // charges add, payments and adjustments (e.g. a voided credit sale) deduct
+              const entryLabel: Record<string, string> = { CHARGE: "Charge", PAYMENT: "Payment", ADJUSTMENT: "Adjustment" }
+              const items = [...data.entries].reverse().map((e: any) => {
+                  // occurred_at is zone-less UTC text ("YYYY-MM-DD HH:MM:SS")
+                  const date = new Date(String(e.occurred_at).replace(" ", "T") + "Z").toLocaleDateString()
+                  const amount = parseFloat(e.amount)
+                  return {
+                      name: `${date} - ${entryLabel[e.entry_type] || e.entry_type}${e.invoice_number ? ` ${e.invoice_number}` : ""}`,
+                      quantity: 1,
+                      lineTotal: e.entry_type === "CHARGE" ? amount : -amount,
+                  }
+              })
+
+              // Header comes from the business profile; it is optional on the
+              // printout, so a failed settings fetch still prints the statement
+              const settingsRes = await fetch("/api/settings")
+              const settings = settingsRes.ok ? await settingsRes.json().catch(() => ({})) : {}
+              if (!settingsRes.ok) console.warn("Failed to load business settings for SOA header", settingsRes.status)
+
+              const printResult = await window.electronAPI.printReceipt({
+                  type: "statement",
+                  businessName: settings.business_name,
+                  address: settings.business_address,
+                  tin: settings.business_tin,
+                  customerName: customer.full_name,
                   invoiceNumber: "SOA-" + new Date().getTime().toString().slice(-6),
                   items: items,
-                  vatableSales: 0,
-                  vatAmount: 0,
-                  vatExemptSales: 0,
                   total: customer.current_debt_balance,
-                  // We might want a way to print footer text like "Please pay by..."
-                  // Reuse fields or just rely on total.
               })
+              if (!printResult?.success) {
+                  toast.error(`Failed to print SOA${printResult?.error ? `: ${printResult.error}` : ""}`)
+                  return
+              }
               toast.success("Printing SOA...")
           } else {
               // Fallback to Web View
