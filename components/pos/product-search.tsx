@@ -69,8 +69,14 @@ export function ProductSearch({ onProductSelect, searchTerm: externalSearchTerm,
       const response = await fetch(`/api/products?search=${encodeURIComponent(value)}`)
       const products = response.ok ? await response.json() : null
 
+      // An exact barcode match wins over partial name/barcode matches (e.g. short store codes)
+      const exactBarcode = Array.isArray(products) ? products.find((p: Product) => p.barcode === value) : undefined
+
       if (!Array.isArray(products)) {
         toast.error("Error searching for product")
+      } else if (exactBarcode) {
+        onProductSelect(exactBarcode)
+        setSearchTerm("")
       } else if (products.length === 1) {
         onProductSelect(products[0])
         setSearchTerm("")

@@ -13,6 +13,9 @@ import type { Product } from '@/lib/types';
 export function GlobalScanHandler() {
   const pathname = usePathname();
   const addItem = useCartStore((state) => state.addItem);
+  // Set by the POS page only once /api/shifts/current confirms an open shift
+  const activeShift = useCartStore((state) => state.activeShift);
+  const isPos = pathname === '/pos';
   const handleInventoryScan = useInventoryStore((state) => state.handleScan);
   // WEIGHT products need a weight before going into the cart (same dialog the POS grid/search uses)
   const [weightProduct, setWeightProduct] = useState<Product | null>(null);
@@ -28,8 +31,13 @@ export function GlobalScanHandler() {
   };
 
   const onBarcodeScan = async (barcode: string) => {
-    // 1. POS Mode
-    if (pathname === '/pos' || pathname === '/') {
+    // 1. POS Mode (only with an open shift: not on the cashier login / shift-open screens)
+    if (isPos) {
+        if (!activeShift) {
+            playSound('error');
+            toast.error("Open a shift before scanning items");
+            return;
+        }
         // We need to fetch product by barcode first since addItem expects a Product object
         // The store currently expects a product object, let's quick fetch it
         // Optimally, the store's addItem should handle the lookup to be self-contained.
@@ -83,7 +91,9 @@ export function GlobalScanHandler() {
     await addToCart(product, weight);
   };
 
-  useScanDetection(onBarcodeScan);
+  // On the POS screen a scan always goes to the cart, even while a field (search box,
+  // amount tendered, a dialog input) has focus
+  useScanDetection(onBarcodeScan, { captureInInputs: isPos });
 
   // Otherwise headless: only renders the weight prompt for scanned WEIGHT products
   return (

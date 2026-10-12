@@ -100,10 +100,10 @@ export default function POSPage() {
     setIsManagerAuthOpen(false)
   }
 
+  // Keep the store in sync both ways: the scan handler only accepts scans while a shift is
+  // open, so a closed (or not yet verified) shift must clear the persisted one too
   useEffect(() => {
-    if (activeShift) {
-        setStoreShift(activeShift)
-    }
+    setStoreShift(activeShift)
   }, [activeShift, setStoreShift])
 
   const checkActiveShift = async () => {

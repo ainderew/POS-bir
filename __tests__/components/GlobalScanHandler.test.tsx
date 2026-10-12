@@ -37,18 +37,21 @@ const flushPromises = async () => {
 describe('GlobalScanHandler', () => {
   let addItemMock: jest.Mock;
   let handleInventoryScanMock: jest.Mock;
+  let activeShift: { id: string } | null;
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
 
     addItemMock = jest.fn().mockResolvedValue(true);
+    activeShift = { id: 'shift-1' };
     handleInventoryScanMock = jest.fn().mockResolvedValue(true);
 
     // Fix Zustand Mocks to handle selector
     (useCartStore as unknown as jest.Mock).mockImplementation((selector) => {
-        if (selector) return selector({ addItem: addItemMock });
-        return { addItem: addItemMock };
+        const state = { addItem: addItemMock, activeShift };
+        if (selector) return selector(state);
+        return state;
     });
 
     (useInventoryStore as unknown as jest.Mock).mockImplementation((selector) => {
@@ -97,6 +100,56 @@ describe('GlobalScanHandler', () => {
     expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('123'));
     expect(addItemMock).toHaveBeenCalled();
     expect(handleInventoryScanMock).not.toHaveBeenCalled();
+  });
+
+  test('POS: scans are refused until a shift is open (cashier login / shift-open screens)', async () => {
+    mockUsePathname.mockReturnValue('/pos');
+    activeShift = null;
+    render(<GlobalScanHandler />);
+
+    simulateScan('123');
+    await flushPromises();
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(addItemMock).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalledWith('Open a shift before scanning items');
+  });
+
+  test('the home page is not a POS screen: scans there are ignored', async () => {
+    mockUsePathname.mockReturnValue('/');
+    render(<GlobalScanHandler />);
+
+    simulateScan('123');
+    await flushPromises();
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(addItemMock).not.toHaveBeenCalled();
+  });
+
+  test('POS: a scan into a focused field (e.g. amount tendered) still goes to the cart', async () => {
+    mockUsePathname.mockReturnValue('/pos');
+    render(<GlobalScanHandler />);
+    const tendered = document.createElement('input');
+    tendered.value = '500';
+    document.body.appendChild(tendered);
+    tendered.focus();
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, json: async () => ([{ barcode: '1234', name: 'Soap' }]) });
+
+    let t = 1000;
+    act(() => {
+      for (const key of [...'1234', 'Enter']) {
+        jest.setSystemTime((t += 10));
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        tendered.dispatchEvent(event);
+        if (key !== 'Enter' && !event.defaultPrevented) tendered.value += key;
+      }
+    });
+    await flushPromises();
+
+    expect(tendered.value).toBe('500');
+    expect(global.fetch).toHaveBeenCalledWith('/api/products?search=1234');
+    expect(addItemMock).toHaveBeenCalledWith({ barcode: '1234', name: 'Soap' }, 1);
+    document.body.removeChild(tendered);
   });
 
   test('Test Case 2: Inventory Routing', async () => {
